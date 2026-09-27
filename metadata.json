@@ -1,0 +1,6 @@
+{
+  "name": "IPL Live Auction Arena",
+  "description": "Professional real-time IPL offline auction room and online multiplayer synchronization platform for projector, auctioneer, and team devices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

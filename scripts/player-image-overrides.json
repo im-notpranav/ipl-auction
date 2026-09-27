@@ -1,0 +1,19 @@
+{
+  "_help": [
+    "Per-player corrections for scripts/syncPlayerImages.ts, keyed by player id (see player-image-review.html).",
+    "iplName: the player's name as spelled on iplt20.com squad pages.",
+    "wikipedia: the exact English Wikipedia article title to use.",
+    "commonsFile: a specific Wikimedia Commons file name to use (e.g. 'Dasun Shanaka in 2022.jpg').",
+    "skipIpl / skipWikipedia: true = that source gave a wrong photo, don't use it.",
+    "name: for humans only; the script ignores it.",
+    "To use your own photo instead, drop it in player-photos/ named after the player (e.g. 'Virat Kohli.jpg') or their id ('p-1.png')."
+  ],
+  "p-274": { "name": "MS Dhoni", "iplName": "Mahendra Singh Dhoni" },
+  "p-69": { "name": "Mitchell Santner", "iplName": "Mitch Santner" },
+  "p-85": { "name": "T Natarajan", "iplName": "Thangarasu Natarajan" },
+  "p-271": { "name": "Yudhvir Singh", "iplName": "Yudhvir Singh Charak" },
+  "p-308": { "name": "Matthew Short", "iplName": "Matt Short" },
+  "p-349": { "name": "Ruben Trumpelmann", "wikipedia": "Ruben Trumpelmann" },
+  "p-74": { "name": "Daniel Sams", "skipWikipedia": true, "note": "Wikipedia photo is a distant back view while batting" },
+  "p-292": { "name": "James Neesham", "iplName": "Jimmy Neesham" }
+}

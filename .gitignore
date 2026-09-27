@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+dist-server/
+# Local auction snapshot and scratch artifacts (never commit or upload)
+.auction_rooms_state.json
+player-image-report.json
+player-image-review.html
+probe-output.txt
+t.out

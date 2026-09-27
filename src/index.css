@@ -1,0 +1,150 @@
+@import "tailwindcss";
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/barlow/700.css";
+@import "@fontsource/barlow-condensed/600.css";
+@import "@fontsource/barlow-condensed/700.css";
+@import "@fontsource/barlow-condensed/800.css";
+@import "@fontsource/barlow-condensed/800-italic.css";
+
+/*
+  IPL broadcast palette.
+  Navy surfaces, one action accent (IPL orange), gold reserved for money,
+  green/red only for bidding state (leading / outbid, sold / unsold).
+  The app is dark-only on purpose: it is a projector and match-night UI.
+*/
+@theme {
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, sans-serif;
+
+  --color-night: #060b1c;
+  --color-pitch: #0b1433;
+  --color-pitch-2: #111c45;
+  --color-pitch-3: #18265a;
+  --color-line: #1f2d63;
+  --color-line-strong: #2f4185;
+
+  --color-ink: #eef2fb;
+  --color-ink-2: #b3bddc;
+  /* ink-3 is the quietest text: kept >= 4.5:1 on pitch, pitch-2 and pitch-3. */
+  --color-ink-3: #8f9bc8;
+
+  --color-ipl-navy: #0a1c5c;
+  --color-ipl-blue: #19398a;
+  --color-ipl-blue-bright: #4f78e6;
+  --color-ipl-orange: #f36f21;
+  --color-ipl-orange-hover: #ff8742;
+  --color-ipl-gold: #f2c14e;
+
+  --color-live: #2fd173;
+  --color-danger: #f5525a;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Elevation scale: flat panels use borders only; these are for raised cards and overlays. */
+  --shadow-lift: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -18px rgb(0 0 0 / 0.7);
+  --shadow-pop: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 24px 64px -20px rgb(0 0 0 / 0.85);
+
+  --animate-beam: beam 9s ease-in-out infinite alternate;
+  --animate-ticker: ticker 60s linear infinite;
+  --animate-shine: shine 3.2s ease-in-out infinite;
+  --animate-urgent-ring: urgent-ring 1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+
+  @keyframes beam {
+    from { transform: rotate(-14deg); opacity: 0.55; }
+    to { transform: rotate(10deg); opacity: 0.9; }
+  }
+  @keyframes ticker {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes urgent-ring {
+    from { transform: scale(1); opacity: 0.9; }
+    to { transform: scale(1.04, 1.3); opacity: 0; }
+  }
+  @keyframes shine {
+    0%, 60% { transform: translateX(-120%) skewX(-20deg); }
+    100% { transform: translateX(220%) skewX(-20deg); }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Guard against a stray wide element causing sideways scroll on phones.
+       clip (not hidden) keeps the sticky navbar working. */
+    overflow-x: clip;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--color-night);
+    background-image:
+      radial-gradient(1100px 520px at 50% -140px, rgb(25 57 138 / 0.45), transparent 70%),
+      radial-gradient(700px 400px at 100% 100%, rgb(243 111 33 / 0.06), transparent 70%);
+    background-attachment: fixed;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button:not(:disabled),
+  [role="button"],
+  a[href],
+  label[for],
+  select {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ipl-orange);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-ipl-orange);
+    color: var(--color-night);
+  }
+}
+
+/* Scoreboard numerals: equal-width digits so prices don't jitter while bidding. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Orange-to-gold rule, the colours of the crest's arc. */
+@utility stripe-ipl {
+  background-image: linear-gradient(90deg, var(--color-ipl-orange), var(--color-ipl-gold));
+}
+
+/* Floodlit stadium backdrop for hero areas. */
+@utility stadium {
+  background-color: var(--color-ipl-navy);
+  background-image:
+    radial-gradient(90% 70% at 50% 0%, rgb(79 120 230 / 0.35), transparent 60%),
+    radial-gradient(60% 50% at 85% 100%, rgb(243 111 33 / 0.22), transparent 70%),
+    linear-gradient(180deg, #0d2170 0%, var(--color-ipl-navy) 45%, var(--color-night) 100%);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

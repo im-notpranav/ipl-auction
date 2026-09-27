@@ -1,0 +1,59 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n \"API,WEB\" -c \"cyan,yellow\" \"tsx server.ts\" \"vite\"",
+    "dev:server": "tsx server.ts",
+    "dev:client": "vite",
+    "build": "vite build && npm run build:server",
+    "preview": "vite preview",
+    "start": "node dist-server/server.cjs",
+    "clean": "rm -rf dist dist-server server.js",
+    "lint": "tsc --noEmit",
+    "test": "tsx tests/auction.test.ts && tsx tests/playingXI.test.ts",
+    "verify:players": "tsx scripts/verifyPlayers.ts",
+    "sync:images": "tsx scripts/syncPlayerImages.ts",
+    "build:client": "vite build",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist-server/server.cjs --external:bufferutil --external:utf-8-validate \"--banner:js=process.env.NODE_ENV ??= 'production';\""
+  },
+  "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@google/genai": "^2.4.0",
+    "@supabase/supabase-js": "^2.117.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "canvas-confetti": "^1.9.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^8.3.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^10.0.5",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.4",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

@@ -1,0 +1,35 @@
+# Dependencies and build output are recreated inside the image
+node_modules
+dist
+dist-server
+build
+coverage
+
+# Secrets: set these as platform environment variables instead
+.env
+.env.*
+!.env.example
+
+# Local auction data and scratch artifacts
+.auction_rooms_state.json
+player-image-report.json
+player-image-review.html
+probe-output.txt
+t.out
+*.log
+
+# Not needed to build or run
+bun.lock
+tests
+supabase
+.git
+.github
+.vscode
+.idea
+.claude
+.planning
+graphify-out
+DEPLOY.md
+README.md
+Dockerfile
+.dockerignore
