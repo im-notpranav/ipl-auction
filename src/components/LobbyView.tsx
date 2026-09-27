@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Users, Copy, Check, Share2, Play, UserPlus, Tv, Timer, Wallet, Globe, ShieldCheck, Pencil } from 'lucide-react';
 import { AuctionRoomState } from '../types';
 import { FRANCHISES } from '../data/franchises';
-import { Button, EmptyState, Notice, Panel, PanelHeader, TeamTag, TextField } from './ui';
+import { Button, EmptyState, Notice, Panel, PanelHeader, TeamLogo, TeamTag, TextField } from './ui';
 
 interface JoinTeamData {
   displayName: string;
@@ -130,11 +130,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
       style={{ background: `linear-gradient(135deg, ${myTeam.color || '#19398a'}40, var(--color-pitch) 55%)` }}
     >
       <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: myTeam.color || '#f36f21' }} aria-hidden />
+      <motion.div
+        className="absolute right-4 top-5 sm:right-6"
+        initial={{ opacity: 0, scale: 0.6, rotate: -8 }}
+        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.15 }}
+      >
+        <TeamLogo team={myTeam} size={96} className="h-20 w-20 sm:h-24 sm:w-24" />
+      </motion.div>
       <p className="flex items-center gap-2 text-sm font-semibold text-live">
         <ShieldCheck className="h-4 w-4" aria-hidden /> You're registered
       </p>
-      <p className="mt-2 font-display text-6xl font-extrabold uppercase italic leading-none text-ink">{myTeam.shortName}</p>
-      <p className="mt-1 font-display text-xl font-bold uppercase tracking-wide text-ink-2">{myTeam.name}</p>
+      <p className="mt-2 pr-24 font-display text-6xl font-extrabold uppercase italic leading-none text-ink sm:pr-28">{myTeam.shortName}</p>
+      <p className="mt-1 pr-24 font-display text-xl font-bold uppercase tracking-wide text-ink-2 sm:pr-28">{myTeam.name}</p>
       <div className="mt-5 flex items-center gap-2.5 rounded-xl bg-night/50 px-3.5 py-3 text-sm text-ink-2" role="status">
         <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ipl-gold opacity-70" />
@@ -179,7 +187,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
                     }`}
                   >
                     <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: f.color }} aria-hidden />
-                    <span className="min-w-0 pl-1.5">
+                    <TeamLogo team={{ name: f.name, shortName: f.short, color: f.color }} size={40} className="ml-1 transition-transform duration-200 group-hover:scale-110 group-disabled:grayscale" />
+                    <span className="min-w-0">
                       <span className="block font-display text-xl font-extrabold leading-none tracking-wide text-ink">{f.short}</span>
                       <span className="mt-0.5 block truncate text-xs text-ink-3">{takenBy ? 'Taken' : f.name}</span>
                     </span>
@@ -359,6 +368,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
                       className={`relative flex items-center gap-3 overflow-hidden rounded-xl border bg-night/60 p-3 pl-4 ${t.id === myTeamId ? 'border-ipl-orange/60' : 'border-line'}`}
                     >
                       <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: t.color || '#8390bd' }} aria-hidden />
+                      <TeamLogo team={t} size={40} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-display text-lg font-bold uppercase tracking-wide text-ink">{t.name}</p>
                         <p className="flex items-center gap-1.5 text-sm text-ink-3">
@@ -375,7 +385,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
                           Remove
                         </Button>
                       ) : (
-                        <TeamTag shortName={t.shortName} color={t.color} />
+                        <TeamTag shortName={t.shortName} name={t.name} color={t.color} />
                       )}
                     </motion.li>
                   );

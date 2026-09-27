@@ -158,7 +158,7 @@ function AwardCard({ award, index }: { award: Award; index: number }) {
         <p className="mt-1 text-sm text-ink-2">{award.detail}</p>
         {award.team && (
           <div className="mt-auto pt-3">
-            <TeamTag shortName={award.team.shortName} color={award.team.color} />
+            <TeamTag shortName={award.team.shortName} name={award.team.name} color={award.team.color} />
           </div>
         )}
       </div>
@@ -210,7 +210,7 @@ function SquadMakeup({ team, index }: { team: Team; index: number }) {
       transition={{ delay: index * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="flex items-center justify-between gap-2">
-        <TeamTag shortName={team.shortName} color={team.color} />
+        <TeamTag shortName={team.shortName} name={team.name} color={team.color} />
         <span className="text-xs text-ink-3 tabular">
           {players.length} players · {formatPrice(team.startingPurse - team.remainingPurse)}
         </span>
@@ -289,7 +289,7 @@ export function AwardsPanel({ roomState, analyses }: { roomState: AuctionRoomSta
                   {formatRole(p.role)} · {formatPrice(b.soldPrice)}
                 </span>
               </span>
-              <TeamTag shortName={t.shortName} color={t.color} className="hidden sm:inline-flex" />
+              <TeamTag shortName={t.shortName} name={t.name} color={t.color} className="hidden sm:inline-flex" />
               <span className="w-8 text-right font-display text-xl font-extrabold tabular" style={{ color: ratingColor(r) }}>
                 {r}
               </span>

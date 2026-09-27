@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Team } from '../../types';
 import { formatPrice } from '../../utils/format';
-import { CountUp } from '../ui';
+import { CountUp, TeamLogo } from '../ui';
 
 interface PurseTickerProps {
   teams: Team[];
@@ -72,6 +72,7 @@ export function PurseTicker({ teams, leaderId, maxSquadSize, maxOverseas }: Purs
                       <span className="relative h-2 w-2 rounded-full bg-live" />
                     </span>
                   )}
+                  <TeamLogo team={t} size={22} />
                   {t.shortName}
                 </span>
                 <CountUp

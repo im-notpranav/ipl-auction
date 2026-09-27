@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Users, MessageSquare, Send, CheckCircle2, Globe, Hourglass, Gavel, ChevronRight, Star, Zap } from 'lucide-react';
 import { AuctionRoomState, ChatMessage, PlayerRole, Team } from '../types';
 import { formatCategory, formatPrice, formatRole, calculateNextLegalBid } from '../utils/format';
-import { Button, CountUp, Drawer, EmptyState, Notice, PlayerPhoto, Price, RatingRing, TeamTag, Toast } from './ui';
+import { Button, CountUp, Drawer, EmptyState, Notice, PlayerPhoto, Price, RatingRing, TeamLogo, TeamTag, Toast } from './ui';
 import { PlayerStats } from './PlayerStats';
 import { getPlayerRating } from '../services/playerRatings';
 import { ClockBar, useLotClock } from './live/BidClock';
@@ -167,8 +167,9 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
         <div className="relative overflow-hidden rounded-2xl border border-line bg-pitch p-4">
           <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: myTeam.color || '#8390bd' }} aria-hidden />
           <div className="flex items-start justify-between gap-3 pl-1">
-            <div className="min-w-0">
-              <p className="truncate font-display text-xl font-bold uppercase tracking-wide text-ink">{myTeam.name}</p>
+            <TeamLogo team={myTeam} size={44} className="mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 font-display text-lg font-bold uppercase leading-tight tracking-wide text-ink">{myTeam.name}</p>
               <p className="text-sm tabular text-ink-3">
                 Squad {myTeam.squadSize}/{settings.maxSquadSize} · Overseas {myTeam.overseasCount}/{settings.maxOverseas}
               </p>
@@ -298,7 +299,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                     <span className="font-semibold text-live">You're leading</span>
                   ) : leadingTeam ? (
                     <span className="inline-flex items-center gap-2 text-ink-2">
-                      <TeamTag shortName={leadingTeam.shortName} color={leadingTeam.color} /> leads
+                      <TeamTag shortName={leadingTeam.shortName} name={leadingTeam.name} color={leadingTeam.color} /> leads
                     </span>
                   ) : (
                     <span className="text-ink-3">No bids yet. Opens at the base price.</span>
@@ -418,6 +419,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
             key={celebrate.timestamp}
             player={celebrate.player}
             teamName={myTeam.name}
+            teamShortName={myTeam.shortName}
             teamColor={myTeam.color || '#f36f21'}
             price={celebrate.price}
             squadAfter={myTeam.squadSize}

@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Play, Pause, Gavel, XCircle, SkipForward, StopCircle, Users, Globe, Copy, Check, Share2, Eye, UserX, Plus, Undo2, Zap, Trophy, Keyboard } from 'lucide-react';
 import { AuctionRoomState, AuctionSettings } from '../types';
 import { formatCategory, formatPrice, formatRole } from '../utils/format';
-import { Button, CountUp, DeltaPop, Drawer, EmptyState, Modal, Notice, Panel, PlayerPhoto, Price, StatusBadge, TeamTag, Toast } from './ui';
+import { Button, CountUp, DeltaPop, Drawer, EmptyState, Modal, Notice, Panel, PlayerPhoto, Price, StatusBadge, TeamLogo, TeamTag, Toast } from './ui';
 import { PlayerStats } from './PlayerStats';
 import { LotWipe } from './LotWipe';
 import { BidClock } from './live/BidClock';
@@ -329,7 +329,14 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                           exit={{ opacity: 0, x: -12 }}
                           transition={{ duration: 0.25 }}
                         >
-                          <span className="w-2 shrink-0 rounded-full" style={{ backgroundColor: leadingTeam.color || '#8390bd' }} aria-hidden />
+                          <motion.span
+                            className="flex shrink-0 items-center"
+                            initial={{ scale: 0.5, rotate: -10 }}
+                            animate={{ scale: 1, rotate: 0 }}
+                            transition={{ type: 'spring', stiffness: 420, damping: 16 }}
+                          >
+                            <TeamLogo team={leadingTeam} size={64} />
+                          </motion.span>
                           <div className="min-w-0">
                             <p className="truncate font-display text-4xl font-extrabold uppercase leading-tight text-ink">{leadingTeam.name}</p>
                             <p className="text-ink-2">
@@ -475,6 +482,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                         className="relative overflow-hidden rounded-xl border border-line bg-night/60 p-3 pt-4"
                       >
                         <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: t.color || '#8390bd' }} aria-hidden />
+                        <TeamLogo team={t} size={48} className="mb-2" />
                         <p className="truncate font-display text-lg font-bold uppercase tracking-wide text-ink">{t.name}</p>
                         <p className="flex items-center gap-1.5 text-sm text-ink-3">
                           <span className={`h-1.5 w-1.5 rounded-full ${participants[t.ownerParticipantId]?.connected ? 'bg-live' : 'bg-ink-3'}`} aria-hidden />
@@ -600,7 +608,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                 <p className="mt-4 flex items-center justify-center gap-3 font-display text-3xl font-bold uppercase text-ink-2 sm:text-4xl">
                   to
                   <span className="inline-flex items-center gap-2 text-ink">
-                    <span className="h-5 w-5 rounded-full" style={{ backgroundColor: lastSoldEvent.team.color || '#8390bd' }} aria-hidden />
+                    <TeamLogo team={lastSoldEvent.team} size={56} className="h-11 w-11 sm:h-14 sm:w-14" />
                     {lastSoldEvent.team.name}
                   </span>
                 </p>
@@ -654,7 +662,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <TeamTag shortName={team.shortName} color={team.color} />
+                        <TeamTag shortName={team.shortName} name={team.name} color={team.color} />
                         {leading && <span className="text-sm font-semibold text-live">Leading</span>}
                       </div>
                       <p className="mt-1 truncate font-display text-lg font-bold uppercase tracking-wide text-ink">{team.name}</p>

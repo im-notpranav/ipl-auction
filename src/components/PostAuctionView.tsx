@@ -198,7 +198,7 @@ export const PostAuctionView: React.FC<PostAuctionViewProps> = ({ roomState, par
                     onClick={() => setSelectedTeamId(team.id)}
                     className={`rounded-full transition-all ${team.id === activeTeam?.id ? 'ring-2 ring-ipl-orange' : 'opacity-70 hover:opacity-100'}`}
                   >
-                    <TeamTag shortName={team.shortName} color={team.color} />
+                    <TeamTag shortName={team.shortName} name={team.name} color={team.color} />
                   </button>
                 ))}
               </div>
@@ -400,7 +400,7 @@ export const PostAuctionView: React.FC<PostAuctionViewProps> = ({ roomState, par
                               <td className="px-4 py-3 font-display text-lg font-bold text-ink-3">{rank + 1}</td>
                               <th scope="row" className="px-4 py-3 font-semibold text-ink">
                                 <span className="flex items-center gap-2">
-                                  <TeamTag shortName={team.shortName} color={team.color} /> {team.name}
+                                  <TeamTag shortName={team.shortName} name={team.name} color={team.color} /> {team.name}
                                 </span>
                               </th>
                               <td className="px-4 py-3 font-display text-xl font-bold" style={{ color: ratingColor(rep.overallScore) }}>
@@ -444,7 +444,7 @@ export const PostAuctionView: React.FC<PostAuctionViewProps> = ({ roomState, par
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-ink">{player.name}</p>
                             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
-                              <TeamTag shortName={team.shortName} color={team.color} className="px-1.5 text-xs" />
+                              <TeamTag shortName={team.shortName} name={team.name} color={team.color} className="px-1.5 text-xs" />
                               <Price value={b.soldPrice} className="text-sm" />
                             </p>
                           </div>

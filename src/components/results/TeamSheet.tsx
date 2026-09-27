@@ -4,7 +4,7 @@ import { Globe, Repeat } from 'lucide-react';
 import { PlayingXIDraft, Team } from '../../types';
 import { PLAYERS_BY_ID } from '../../data/players';
 import { getPlayerRating } from '../../services/playerRatings';
-import { ratingColor } from '../ui';
+import { TeamLogo, ratingColor } from '../ui';
 
 /*
   Printed-style team sheet: batting order 1-11 with captaincy and keeping marks,
@@ -51,7 +51,8 @@ export function TeamSheet({ team, sheet, status, submittedAt, highlight }: TeamS
       <header className="relative overflow-hidden px-4 py-3" style={{ background: `linear-gradient(110deg, ${color}40, transparent 75%)` }}>
         <div className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: color }} aria-hidden />
         <div className="flex items-start justify-between gap-3 pl-1.5">
-          <div className="min-w-0">
+          <TeamLogo team={team} size={40} className="mt-0.5" />
+          <div className="min-w-0 flex-1">
             <p className="truncate font-display text-xl font-extrabold uppercase italic leading-tight tracking-wide text-ink">{team.name}</p>
             <p className="text-xs text-ink-2">
               {status === 'submitted' ? (

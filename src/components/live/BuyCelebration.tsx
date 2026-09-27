@@ -3,7 +3,7 @@ import { AnimatePresence, animate, motion } from 'motion/react';
 import { celebrate } from '../../utils/celebrate';
 import { Player } from '../../types';
 import { formatPrice } from '../../utils/format';
-import { PlayerPhoto } from '../ui';
+import { PlayerPhoto, TeamLogo } from '../ui';
 import { liveSounds } from './liveSounds';
 
 /*
@@ -17,6 +17,7 @@ import { liveSounds } from './liveSounds';
 interface BuyCelebrationProps {
   player: Player;
   teamName: string;
+  teamShortName?: string;
   teamColor: string;
   price: number;
   squadAfter: number;
@@ -48,7 +49,7 @@ function Tween({ from, to, delay, format, className }: { from: number; to: numbe
 
 const fmtPrice = (n: number) => formatPrice(Math.round(n * 100) / 100);
 
-export function BuyCelebration({ player, teamName, teamColor, price, squadAfter, maxSquad, purseAfter, onDone }: BuyCelebrationProps) {
+export function BuyCelebration({ player, teamName, teamShortName, teamColor, price, squadAfter, maxSquad, purseAfter, onDone }: BuyCelebrationProps) {
   const [phase, setPhase] = useState<'reveal' | 'fly'>('reveal');
   const [flyTo, setFlyTo] = useState({ x: 0, y: -260 });
   const photoRef = useRef<HTMLDivElement>(null);
@@ -131,6 +132,13 @@ export function BuyCelebration({ player, teamName, teamColor, price, squadAfter,
       </motion.div>
 
       <div className="relative z-10 mt-8 flex flex-1 flex-col items-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.4, rotate: -12 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 16, delay: 0.05 }}
+        >
+          <TeamLogo team={{ name: teamName, shortName: teamShortName ?? teamName.slice(0, 3), color: teamColor }} size={64} className="mb-2" />
+        </motion.div>
         <motion.p
           className="font-display text-lg font-bold uppercase tracking-[0.35em] text-ipl-gold"
           initial={{ opacity: 0, y: -10 }}

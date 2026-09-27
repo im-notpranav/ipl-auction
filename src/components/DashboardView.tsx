@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Gavel, HelpCircle, ArrowRight, RefreshCw, Play, FileText, Database, Radio, Trophy, Tv, Smartphone, BarChart3, Globe, QrCode } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { Gavel, HelpCircle, ArrowRight, RefreshCw, Play, FileText, Database, Radio, Trophy, Tv, Smartphone, BarChart3, QrCode } from 'lucide-react';
 import { ALL_PLAYERS } from '../data/players';
-import { FRANCHISES } from '../data/franchises';
+import { FRANCHISES, Franchise, findFranchise } from '../data/franchises';
 import { getPlayerRating } from '../services/playerRatings';
 import { formatPrice, formatRole } from '../utils/format';
+import { Player } from '../types';
 import { BrandMark, Button, CountUp, EmptyState, IconButton, Notice, Panel, PlayerPhoto, RatingRing, StatusBadge, TabBar, TextField } from './ui';
 
 export interface PublicRoomItem {
@@ -30,17 +31,53 @@ interface DashboardViewProps {
 }
 
 const EASE = [0.16, 1, 0.3, 1] as const;
+const FALLBACK_TEAM: Franchise = { name: 'IPL', short: 'IPL', color: '#4f78e6', logo: '' };
 
-// Highest-rated players that have an official IPL headshot, for the hero card and showcase.
-const FEATURED = ALL_PLAYERS.filter((p) => p.imageSource === 'IPL')
-  .map((p) => ({ p, r: getPlayerRating(p) }))
-  .filter(({ r }) => r.confidence === 'HIGH')
-  .sort((a, b) => b.r.overall - a.r.overall);
+// The headline acts of the pool, hand-picked so the landing page shows faces
+// every fan knows. Each is shown in the colours of their last IPL team.
+const STAR_NAMES = [
+  'Virat Kohli',
+  'Rohit Sharma',
+  'MS Dhoni',
+  'Jasprit Bumrah',
+  'Hardik Pandya',
+  'Suryakumar Yadav',
+  'Rishabh Pant',
+  'Ravindra Jadeja',
+  'Rashid Khan',
+  'Shubman Gill',
+  'Pat Cummins',
+  'Jos Buttler',
+];
+
+interface Star {
+  p: Player;
+  team: Franchise;
+  rating: number;
+}
+
+const STARS: Star[] = STAR_NAMES.map((name) => ALL_PLAYERS.find((p) => p.name === name))
+  .filter((p): p is Player => !!p)
+  .map((p) => ({ p, team: findFranchise(p.previousIPLTeam) ?? FALLBACK_TEAM, rating: getPlayerRating(p).overall }));
+
+// Hero rotation: the eight biggest names.
+const HERO_STARS = STARS.slice(0, 8);
+
+const fmtInt = (n: number) => n.toLocaleString('en-IN');
+
+// Two numbers that sum up a player's IPL career, in plain words.
+function careerLine(p: Player): Array<{ value: string; label: string }> {
+  const runs = { value: fmtInt(p.batting.runs), label: 'runs' };
+  const wkts = { value: fmtInt(p.bowling.wickets), label: 'wickets' };
+  if (p.role === 'BOWLER') return [wkts, { value: p.bowling.economy.toFixed(2), label: 'economy' }];
+  if (p.role === 'ALL_ROUNDER') return [runs, wkts];
+  return [runs, { value: p.batting.strikeRate.toFixed(1), label: 'strike rate' }];
+}
 
 const STEPS = [
   { icon: Tv, title: 'Put it on the big screen', body: 'Create a room on the laptop driving the TV or projector. It becomes the auction stage.' },
   { icon: Smartphone, title: 'Every team joins by phone', body: 'Owners scan the QR code, pick a franchise and get a bid paddle with their live purse.' },
-  { icon: Gavel, title: 'Bid, sell, build the XI', body: 'You call sold or unsold. Squads, ratings and the best XI are ready the moment it ends.' },
+  { icon: Gavel, title: 'Bid, sell, build the XI', body: 'The clock calls going once, going twice. Squads, ratings and XIs are ready when it ends.' },
 ];
 
 function Reveal({ children, delay = 0, className, as = 'div' }: { children: React.ReactNode; delay?: number; className?: string; as?: 'div' | 'li' }) {
@@ -58,73 +95,297 @@ function Reveal({ children, delay = 0, className, as = 'div' }: { children: Reac
   );
 }
 
-// Rotating "on the block" card in the hero.
-function OnTheBlock() {
-  const pool = FEATURED.slice(0, 8);
-  const [i, setI] = useState(0);
+/* ── Hero: the star on the block ───────────────────────────────────────────
+   One superstar at a time in their team's colours, crest behind them.
+   Rotates every few seconds (paused on hover/focus and under reduced motion);
+   the thumbnails below jump straight to a player. */
+const ROTATE_MS = 4200;
+
+function StarStage() {
+  const reduce = useReducedMotion();
+  const [index, setIndex] = useState(0);
+  const [dir, setDir] = useState(1);
+  const [paused, setPaused] = useState(false);
+  const star = HERO_STARS[index];
+
   useEffect(() => {
-    if (pool.length < 2) return;
-    const t = setInterval(() => setI((n) => (n + 1) % pool.length), 3800);
-    return () => clearInterval(t);
-  }, [pool.length]);
-  const item = pool[i];
-  if (!item) return null;
-  const { p, r } = item;
+    if (reduce || paused || HERO_STARS.length < 2) return;
+    const t = setTimeout(() => {
+      setDir(1);
+      setIndex((n) => (n + 1) % HERO_STARS.length);
+    }, ROTATE_MS);
+    return () => clearTimeout(t);
+  }, [index, paused, reduce]);
+
+  if (!star) return null;
+  const { p, team, rating } = star;
+  const pick = (n: number) => {
+    setDir(n > index ? 1 : -1);
+    setIndex(n);
+  };
 
   return (
-    <div className="relative mx-auto w-full max-w-[420px]">
-      <div className="absolute -inset-6 rounded-[2rem] bg-ipl-orange/15 blur-3xl" aria-hidden />
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#2a54c4] via-ipl-blue to-ipl-navy shadow-[0_40px_80px_-30px_rgb(0_0_0/0.8)]">
-        {/* The crest's arc, behind the player */}
-        <svg viewBox="0 0 400 500" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden>
-          <defs>
-            <linearGradient id="hero-arc" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0" stopColor="#f36f21" />
-              <stop offset="1" stopColor="#f2c14e" />
-            </linearGradient>
-          </defs>
-          <path d="M-20 400C90 300 240 250 420 270v36C250 290 110 330 10 470Z" fill="url(#hero-arc)" opacity="0.9" />
-        </svg>
+    <div
+      className="relative mx-auto w-full max-w-[440px]"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
+      {/* Team-colour floodlight behind the card */}
+      <motion.div
+        className="absolute -inset-8 rounded-[3rem] blur-3xl"
+        animate={{ backgroundColor: `${team.color}40` }}
+        transition={{ duration: 0.8 }}
+        aria-hidden
+      />
+
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-ipl-navy shadow-[0_40px_80px_-30px_rgb(0_0_0/0.85)]">
+        {/* Background wash in the team colour, cross-faded per player */}
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={team.short}
+            className="absolute inset-0"
+            style={{ background: `radial-gradient(110% 80% at 70% 15%, ${team.color}d0, ${team.color}40 45%, transparent 75%), linear-gradient(180deg, #11225f, var(--color-night))` }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7 }}
+            aria-hidden
+          />
+        </AnimatePresence>
+
+        {/* Giant crest watermark */}
+        <AnimatePresence initial={false}>
+          {team.logo && (
+            <motion.img
+              key={team.logo}
+              src={team.logo}
+              alt=""
+              className="pointer-events-none absolute -right-16 top-6 h-80 w-80 object-contain"
+              initial={{ opacity: 0, scale: 0.8, rotate: -12 }}
+              animate={{ opacity: 0.22, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 1.1 }}
+              transition={{ duration: 0.8, ease: EASE }}
+              aria-hidden
+            />
+          )}
+        </AnimatePresence>
+
         <span className="absolute left-4 top-4 z-10 -skew-x-12 bg-ipl-orange px-2.5 py-0.5 font-display text-sm font-extrabold uppercase tracking-wider text-night">
           <span className="inline-block skew-x-12">On the block</span>
         </span>
         <div className="absolute right-4 top-4 z-10 rounded-full bg-night/60 p-1 backdrop-blur-sm">
-          <RatingRing key={p.id} value={r.overall} size={64} />
+          <RatingRing key={p.id} value={rating} size={60} />
         </div>
 
         <div className="relative aspect-[4/5]">
-          <AnimatePresence initial={false}>
+          <AnimatePresence initial={false} custom={dir}>
             <motion.div
               key={p.id}
+              custom={dir}
               className="absolute inset-0"
-              initial={{ opacity: 0, x: 60, scale: 0.96 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -60, scale: 0.96 }}
-              transition={{ duration: 0.6, ease: EASE }}
+              variants={{
+                // The outgoing player clears in 0.2s before the next one lands, so two faces never overlap.
+                enter: (d: number) => ({ opacity: 0, x: d * 80, scale: 0.94 }),
+                center: { opacity: 1, x: 0, scale: 1, transition: { type: 'spring', stiffness: 170, damping: 24, delay: 0.12 } },
+                exit: (d: number) => ({ opacity: 0, x: d * -60, scale: 0.96, transition: { duration: 0.2, ease: 'easeIn' } }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
             >
               <PlayerPhoto player={p} eager className="h-full w-full object-contain object-bottom drop-shadow-[0_24px_30px_rgb(0_0_0/0.55)]" />
             </motion.div>
           </AnimatePresence>
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-night via-night/70 to-transparent" aria-hidden />
         </div>
 
-        <div className="relative border-t border-white/10 bg-night/85 px-5 py-4 backdrop-blur-md">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-              <p className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight text-ink">{p.name}</p>
-              <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm text-ink-2">
-                {p.isOverseas && <Globe className="h-3.5 w-3.5 text-ipl-blue-bright" aria-hidden />}
-                {formatRole(p.role)} · {p.batting.matches} IPL matches · Base <span className="font-display font-bold text-ipl-gold">{formatPrice(p.basePrice)}</span>
+        <div className="relative -mt-24 px-5 pb-5">
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.div key={p.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }} transition={{ duration: 0.35, ease: EASE }}>
+              <p className="flex items-center gap-2 font-display text-sm font-bold uppercase tracking-widest text-ink-2">
+                {team.logo && <img src={team.logo} alt="" className="h-6 w-6 object-contain" />}
+                {team.name}
               </p>
+              <p className="mt-1 pb-1 font-display text-4xl font-extrabold uppercase italic leading-[1.05] tracking-tight text-ink sm:text-5xl">{p.name}</p>
+              <dl className="mt-2 flex items-end gap-6">
+                {careerLine(p).map((s) => (
+                  <div key={s.label}>
+                    <dd className="font-display text-2xl font-extrabold leading-none tabular text-ipl-gold">{s.value}</dd>
+                    <dt className="mt-1 text-xs uppercase tracking-wider text-ink-3">IPL {s.label}</dt>
+                  </div>
+                ))}
+                <div className="ml-auto text-right">
+                  <dd className="font-display text-2xl font-extrabold leading-none tabular text-ink">{formatPrice(p.basePrice)}</dd>
+                  <dt className="mt-1 text-xs uppercase tracking-wider text-ink-3">Base price</dt>
+                </div>
+              </dl>
             </motion.div>
           </AnimatePresence>
-          <div className="mt-3 flex gap-1.5" aria-hidden>
-            {pool.map((x, n) => (
-              <span key={x.p.id} className={`h-1 flex-1 rounded-full transition-colors duration-500 ${n === i ? 'bg-ipl-orange' : 'bg-white/15'}`} />
-            ))}
-          </div>
         </div>
       </div>
+
+      {/* Thumbnail rail: jump to any star; the active one shows time to the next */}
+      <div className="relative mx-auto mt-5 grid max-w-[440px] grid-cols-8 gap-1.5 sm:gap-2.5" role="group" aria-label="Choose a featured player">
+        {HERO_STARS.map((s, n) => {
+          const active = n === index;
+          return (
+            <button
+              key={s.p.id}
+              type="button"
+              onClick={() => pick(n)}
+              aria-label={`Show ${s.p.name}`}
+              aria-pressed={active}
+              className="group relative aspect-square w-full max-w-12 justify-self-center overflow-hidden rounded-full border-2 transition-[transform,border-color] duration-200 hover:-translate-y-0.5 active:scale-95"
+              style={{ borderColor: active ? s.team.color : 'rgb(255 255 255 / 0.12)', background: `linear-gradient(160deg, ${s.team.color}90, #0b1433 70%)` }}
+            >
+              <img src={s.p.imageUrl} alt="" loading="lazy" className={`h-full w-full scale-[1.6] object-cover object-[50%_18%] transition-opacity ${active ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`} />
+              {active && !reduce && !paused && (
+                <motion.span
+                  key={`${index}-progress`}
+                  className="absolute inset-x-0 bottom-0 h-1 origin-left"
+                  style={{ backgroundColor: s.team.color }}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ duration: ROTATE_MS / 1000, ease: 'linear' }}
+                  aria-hidden
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
+  );
+}
+
+/* ── Franchise crests ───────────────────────────────────────────────────── */
+function CrestWall() {
+  return (
+    <section aria-labelledby="franchises-title" className="border-b border-line bg-night">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <h2 id="franchises-title" className="text-center font-display text-lg font-bold uppercase tracking-[0.25em] text-ink-2">
+          Bid as any of the ten franchises
+        </h2>
+        <ul className="mt-6 grid grid-cols-5 gap-3 sm:gap-4 lg:grid-cols-10">
+          {FRANCHISES.map((f, i) => (
+            <motion.li
+              key={f.short}
+              initial={{ opacity: 0, y: 16, scale: 0.9 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20, delay: i * 0.04 }}
+              className="flex justify-center"
+            >
+              <div className="group relative flex flex-col items-center" title={f.name}>
+                <span
+                  className="absolute top-1 h-12 w-12 rounded-full opacity-0 blur-xl transition-opacity duration-300 group-hover:opacity-80 sm:h-16 sm:w-16"
+                  style={{ backgroundColor: f.color }}
+                  aria-hidden
+                />
+                <img
+                  src={f.logo}
+                  alt={f.name}
+                  loading="lazy"
+                  className="relative h-14 w-14 object-contain transition-transform duration-300 ease-out group-hover:-translate-y-1 group-hover:scale-110 sm:h-20 sm:w-20"
+                />
+                <span className="mt-1.5 font-display text-sm font-bold tracking-wider text-ink-3 transition-colors group-hover:text-ink">{f.short}</span>
+              </div>
+            </motion.li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/* ── Star bento ─────────────────────────────────────────────────────────────
+   12 players, 16 cells: Kohli 2x2, Rohit 1x2, then singles. Exact on 2 and 4 columns. */
+const TILE_SPAN = ['col-span-2 row-span-2', 'row-span-2'];
+
+function StarTile({ star, big }: { star: Star; big: boolean }) {
+  const { p, team, rating } = star;
+  const [lead] = careerLine(p);
+  return (
+    <div
+      className="group relative h-full overflow-hidden rounded-2xl border border-white/10"
+      style={{ background: `radial-gradient(120% 90% at 85% 5%, ${team.color}c0, ${team.color}30 45%, transparent 75%), linear-gradient(180deg, #10205a, var(--color-night))` }}
+    >
+      {team.logo && (
+        <img
+          src={team.logo}
+          alt=""
+          loading="lazy"
+          className={`pointer-events-none absolute object-contain opacity-15 transition-transform duration-700 ease-out group-hover:rotate-6 group-hover:scale-110 ${big ? '-left-10 -top-10 h-72 w-72' : '-left-4 -top-4 h-28 w-28'}`}
+          aria-hidden
+        />
+      )}
+      <PlayerPhoto
+        player={p}
+        className={`absolute bottom-0 right-0 h-full object-contain object-bottom drop-shadow-[0_18px_24px_rgb(0_0_0/0.5)] transition-transform duration-500 ease-out group-hover:scale-[1.04] ${big ? 'w-[78%]' : 'w-full'}`}
+      />
+      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-night via-night/60 to-transparent" aria-hidden />
+      <div className="absolute right-2.5 top-2.5 rounded-full bg-night/60 backdrop-blur-sm">
+        <RatingRing value={rating} size={big ? 64 : 44} label={big ? 'Rating' : ''} />
+      </div>
+      <div className={`absolute inset-x-0 bottom-0 ${big ? 'p-6' : 'p-3.5'}`}>
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ink-2">
+          {team.logo && <img src={team.logo} alt="" loading="lazy" className={big ? 'h-6 w-6 object-contain' : 'h-4 w-4 object-contain'} />}
+          {team.short}
+          <span className="text-ink-3">{formatRole(p.role)}</span>
+        </p>
+        <p className={`mt-1 pb-0.5 font-display font-extrabold uppercase italic leading-[1.05] tracking-tight text-ink ${big ? 'text-5xl sm:text-6xl' : 'text-xl sm:text-2xl'}`}>{p.name}</p>
+        {big ? (
+          <dl className="mt-3 flex gap-8">
+            {careerLine(p).map((s) => (
+              <div key={s.label}>
+                <dd className="font-display text-3xl font-extrabold leading-none tabular text-ipl-gold">{s.value}</dd>
+                <dt className="mt-1 text-xs uppercase tracking-wider text-ink-3">IPL {s.label}</dt>
+              </div>
+            ))}
+            <div>
+              <dd className="font-display text-3xl font-extrabold leading-none tabular text-ink">{p.batting.matches}</dd>
+              <dt className="mt-1 text-xs uppercase tracking-wider text-ink-3">matches</dt>
+            </div>
+          </dl>
+        ) : (
+          <p className="mt-0.5 text-sm tabular text-ink-2">
+            <span className="font-display text-base font-bold text-ipl-gold">{lead.value}</span> IPL {lead.label}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StarBento({ onBrowse }: { onBrowse: () => void }) {
+  return (
+    <section aria-labelledby="stars-title">
+      <Reveal>
+        <h2 id="stars-title" className="pb-1 font-display text-4xl font-extrabold uppercase italic leading-[1.05] tracking-tight text-ink sm:text-5xl">
+          The names everyone <span className="text-ipl-orange">bids for</span>
+        </h2>
+        <p className="mt-3 max-w-[60ch] text-ink-2">Every player comes with real IPL career numbers and a rating built from them.</p>
+        <Button variant="secondary" className="mt-5" icon={<Database className="h-4 w-4" />} onClick={onBrowse}>
+          Browse all {ALL_PLAYERS.length} players
+        </Button>
+      </Reveal>
+      <ul className="mt-8 grid auto-rows-[200px] grid-cols-2 gap-3 sm:auto-rows-[230px] sm:gap-4 md:grid-cols-4">
+        {STARS.map((star, i) => (
+          <motion.li
+            key={star.p.id}
+            className={TILE_SPAN[i] ?? ''}
+            initial={{ opacity: 0, y: 28, scale: 0.97 }}
+            whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.6, delay: Math.min(i, 6) * 0.05, ease: EASE }}
+          >
+            <StarTile star={star} big={i === 0} />
+          </motion.li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -166,10 +427,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
 
   const poolStats = useMemo(
     () => [
-      { value: ALL_PLAYERS.length, label: 'Players in the pool' },
-      { value: ALL_PLAYERS.filter((p) => p.category === 'MARQUEE').length, label: 'Marquee names' },
-      { value: ALL_PLAYERS.filter((p) => p.isOverseas).length, label: 'Overseas players' },
-      { value: FRANCHISES.length, label: 'Franchise colours' },
+      { value: ALL_PLAYERS.length, label: 'players in the pool' },
+      { value: ALL_PLAYERS.filter((p) => p.category === 'MARQUEE').length, label: 'marquee names' },
+      { value: ALL_PLAYERS.filter((p) => p.isOverseas).length, label: 'overseas stars' },
+      { value: FRANCHISES.length, label: 'franchises' },
     ],
     [],
   );
@@ -183,10 +444,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
           <div className="absolute -top-40 right-[18%] h-[140%] w-52 origin-top animate-beam bg-gradient-to-b from-[#9fb8ff]/25 via-white/5 to-transparent blur-2xl [animation-delay:-4s]" />
         </div>
 
-        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-28 pt-12 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pb-36 lg:pt-16">
-          <div>
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-28 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:pb-32 lg:pt-14">
+          <div className="min-w-0">
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="flex items-center gap-4">
-              <BrandMark className="h-20 w-[72px] shrink-0 drop-shadow-[0_10px_24px_rgb(243_111_33/0.35)] sm:h-24 sm:w-[86px]" />
+              <BrandMark className="h-16 w-[58px] shrink-0 drop-shadow-[0_10px_24px_rgb(243_111_33/0.35)] sm:h-20 sm:w-[72px]" />
               <div className="leading-none">
                 <p className="font-display text-sm font-bold uppercase tracking-[0.3em] text-ipl-gold">Fan-made IPL auction room</p>
                 <p className="mt-2 font-display text-2xl font-extrabold uppercase italic tracking-wide text-ink sm:text-3xl">
@@ -197,25 +458,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
 
             {/* The two lines land one after the other, like a broadcast title card. */}
             <h1 className="mt-8 pb-2 font-display text-6xl font-extrabold uppercase italic leading-[0.95] tracking-tight text-ink sm:text-7xl xl:text-8xl">
-              <motion.span
-                className="block"
-                initial={{ opacity: 0, y: 28 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 170, damping: 24, delay: 0.08 }}
-              >
+              <motion.span className="block" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 170, damping: 24, delay: 0.08 }}>
                 Your league.
               </motion.span>
-              <motion.span
-                className="block"
-                initial={{ opacity: 0, y: 28 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 170, damping: 24, delay: 0.2 }}
-              >
+              <motion.span className="block" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 170, damping: 24, delay: 0.2 }}>
                 <span className="bg-gradient-to-r from-ipl-orange to-ipl-gold bg-clip-text pr-2 text-transparent">Your auction.</span>
               </motion.span>
             </h1>
-            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3, ease: EASE }} className="mt-5 max-w-xl text-lg leading-relaxed text-ink-2">
-              The auction on the big screen, a bid paddle on every phone, and purses that update the instant the hammer falls. Every player carries real IPL career numbers.
+            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3, ease: EASE }} className="mt-5 max-w-lg text-lg leading-relaxed text-ink-2">
+              Kohli, Rohit, Dhoni and {ALL_PLAYERS.length - 3} more under the hammer. The auction runs on the big screen, every team bids from a phone.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.38, ease: EASE }} className="mt-8 flex flex-wrap gap-3">
               <Button variant="primary" size="lg" icon={<Gavel className="h-5 w-5" />} onClick={onOpenCreate}>
@@ -225,21 +476,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
                 How it works
               </Button>
             </motion.div>
-
-            <dl className="mt-12 grid max-w-xl grid-cols-2 gap-x-6 gap-y-5 border-t border-white/10 pt-6 sm:grid-cols-4">
-              {poolStats.map((s, i) => (
-                <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.46 + i * 0.07, duration: 0.5, ease: EASE }}>
-                  <dd className="font-display text-4xl font-extrabold tabular text-ink">
-                    <CountUp value={s.value} duration={1.4} />
-                  </dd>
-                  <dt className="text-sm text-ink-3">{s.label}</dt>
-                </motion.div>
-              ))}
-            </dl>
           </div>
 
           <motion.div initial={{ opacity: 0, y: 40, rotate: 2 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ duration: 0.9, delay: 0.15, ease: EASE }}>
-            <OnTheBlock />
+            <StarStage />
           </motion.div>
         </div>
 
@@ -256,18 +496,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
         </svg>
       </section>
 
-      {/* ── Franchise ticker ─────────────────────────────────────────────── */}
-      <div className="overflow-hidden border-b border-line bg-night py-3">
-        <p className="sr-only">Pick any of the ten IPL franchise colours for your team.</p>
-        <div className="flex w-max animate-ticker gap-10 pr-10" aria-hidden>
-          {[...FRANCHISES, ...FRANCHISES].map((f, i) => (
-            <span key={`${f.short}-${i}`} className="flex items-center gap-2.5 whitespace-nowrap font-display text-lg font-bold uppercase tracking-wider text-ink-2">
-              <span className="h-3 w-3 rotate-45 rounded-[3px]" style={{ backgroundColor: f.color }} />
-              {f.name}
-            </span>
-          ))}
-        </div>
-      </div>
+      <CrestWall />
 
       <div className="mx-auto max-w-7xl space-y-20 px-4 pb-16 pt-12 sm:px-6">
         {canResume && recentRoom && (
@@ -389,9 +618,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
                           </div>
                           <p className="mt-0.5 text-sm text-ink-3">
                             <span className="font-display font-bold tracking-widest text-ink-2">{room.roomCode || room.id}</span>
-                            {' · '}
-                            {room.auctioneerName} · {room.teamsCount} {room.teamsCount === 1 ? 'team' : 'teams'}
-                            {tab === 'finished' && room.totalSpent !== undefined && <> · {formatPrice(room.totalSpent)} spent</>}
+                            {', '}
+                            {room.auctioneerName}, {room.teamsCount} {room.teamsCount === 1 ? 'team' : 'teams'}
+                            {tab === 'finished' && room.totalSpent !== undefined && <>, {formatPrice(room.totalSpent)} spent</>}
                           </p>
                         </div>
                         {tab === 'live' ? (
@@ -412,18 +641,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
           </Reveal>
         </section>
 
+        {/* ── Star players ──────────────────────────────────────────────── */}
+        <StarBento onBrowse={() => onNavigate('data-health')} />
+
+        {/* ── Pool numbers ──────────────────────────────────────────────── */}
+        <Reveal>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-8 rounded-3xl border border-line bg-gradient-to-br from-ipl-blue/40 via-pitch to-night px-6 py-8 sm:px-10 md:grid-cols-4">
+            {poolStats.map((s) => (
+              <div key={s.label}>
+                <dd className="font-display text-5xl font-extrabold leading-none tabular text-ink sm:text-6xl">
+                  <CountUp value={s.value} duration={1.4} />
+                </dd>
+                <dt className="mt-2 text-sm uppercase tracking-wider text-ink-3">{s.label}</dt>
+              </div>
+            ))}
+          </dl>
+        </Reveal>
+
         {/* ── How it works ──────────────────────────────────────────────── */}
-        <section>
+        <section aria-labelledby="how-title">
           <Reveal>
-            <p className="font-display text-sm font-bold uppercase tracking-[0.3em] text-ipl-orange">Auction night</p>
-            <h2 className="mt-2 font-display text-4xl font-extrabold uppercase italic tracking-tight text-ink sm:text-5xl">Three moves to a full squad</h2>
+            <h2 id="how-title" className="pb-1 font-display text-4xl font-extrabold uppercase italic leading-[1.05] tracking-tight text-ink sm:text-5xl">
+              Three moves to a full squad
+            </h2>
           </Reveal>
           <ol className="mt-10 grid gap-10 md:grid-cols-3 md:gap-0">
             {STEPS.map((step, i) => (
               <Reveal as="li" key={step.title} delay={i * 0.1} className="md:pr-10">
                 <div>
                   <div className="flex items-center gap-4">
-                    <span className="font-display text-6xl font-extrabold italic leading-none text-transparent [-webkit-text-stroke:1.5px_var(--color-ipl-orange)]">0{i + 1}</span>
+                    <span className="font-display text-6xl font-extrabold italic leading-none text-transparent [-webkit-text-stroke:1.5px_var(--color-ipl-orange)]">{i + 1}</span>
                     <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-line-strong bg-pitch-2 text-ipl-gold">
                       <step.icon className="h-6 w-6" aria-hidden />
                     </span>
@@ -437,39 +684,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
           </ol>
         </section>
 
-        {/* ── Top-rated showcase ────────────────────────────────────────── */}
-        <section>
-          <Reveal className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="font-display text-sm font-bold uppercase tracking-[0.3em] text-ipl-orange">Rated on real IPL numbers</p>
-              <h2 className="mt-2 font-display text-4xl font-extrabold uppercase italic tracking-tight text-ink sm:text-5xl">Top of the pool</h2>
-              <p className="mt-2 max-w-2xl text-ink-2">Batting Index and Combined Bowling Rate from IPL careers, adjusted so a short hot streak can't outrank a long record.</p>
-            </div>
-            <Button variant="secondary" icon={<Database className="h-4 w-4" />} onClick={() => onNavigate('data-health')}>
-              Browse all {ALL_PLAYERS.length} players
-            </Button>
-          </Reveal>
-          <ul className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {FEATURED.slice(0, 6).map(({ p, r }, i) => (
-              <Reveal as="li" key={p.id} delay={i * 0.06}>
-                <div className="group relative overflow-hidden rounded-2xl border border-line bg-gradient-to-b from-ipl-blue/70 via-pitch-2 to-pitch">
-                  <div className="absolute right-2 top-2 z-10 rounded-full bg-night/60">
-                    <RatingRing value={r.overall} size={48} label="" />
-                  </div>
-                  <PlayerPhoto player={p} className="aspect-[4/5] w-full object-contain object-bottom transition-transform duration-500 group-hover:scale-[1.04]" />
-                  <div className="border-t border-line bg-night/80 px-3 py-2.5">
-                    <p className="truncate font-display text-lg font-bold uppercase leading-tight text-ink">{p.name}</p>
-                    <p className="text-xs text-ink-3">{formatRole(p.role)}</p>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </ul>
-        </section>
-
         <footer className="flex flex-col items-start justify-between gap-3 border-t border-line pt-6 text-sm text-ink-3 sm:flex-row sm:items-center">
           <span className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 shrink-0" aria-hidden /> Stats: IPL career records. Photos: iplt20.com squads and Wikipedia.
+            <BarChart3 className="h-4 w-4 shrink-0" aria-hidden /> Stats: IPL career records. Photos and crests: iplt20.com and Wikipedia.
           </span>
           <span>Fan-made. Not affiliated with the IPL or BCCI.</span>
         </footer>

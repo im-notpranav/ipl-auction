@@ -4,6 +4,7 @@ import { X, Loader2, AlertCircle, CheckCircle2, Info, ChevronDown } from 'lucide
 import { AuctionStatus, Player } from '../types';
 import { formatPrice } from '../utils/format';
 import { showAvatarFallback } from '../data/playerImages';
+import { teamLogoUrl } from '../data/franchises';
 
 /*
   Shared building blocks for every screen.
@@ -592,11 +593,50 @@ export function StatusBadge({ status, className }: { status: AuctionStatus | str
   );
 }
 
-// Team identity chip: the team's own colour is the only decoration.
-export function TeamTag({ shortName, color, className }: { shortName: string; color?: string; className?: string }) {
+type TeamIdentity = { name?: string; shortName: string; color?: string; logoUrl?: string };
+
+// A team's crest: the franchise logo when the team plays as one, otherwise a
+// monogram disc in the team colour so custom teams still have a mark.
+export function TeamLogo({ team, size = 32, className }: { team: TeamIdentity; size?: number; className?: string }) {
+  const src = teamLogoUrl(team);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        loading="lazy"
+        decoding="async"
+        onError={() => setBroken(true)}
+        className={cx('shrink-0 object-contain drop-shadow-[0_2px_4px_rgb(0_0_0/0.35)]', className)}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  const color = team.color || '#8390bd';
   return (
-    <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-pitch-2 px-2.5 py-0.5 font-display text-sm font-bold tracking-wider text-ink', className)}>
-      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color || '#8390bd' }} aria-hidden />
+    <span
+      className={cx('inline-flex shrink-0 items-center justify-center rounded-full font-display font-extrabold italic leading-none text-night', className)}
+      style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * (team.shortName.length > 3 ? 0.3 : 0.38))), background: `linear-gradient(145deg, ${color}, color-mix(in srgb, ${color} 55%, #0b1437))` }}
+      aria-hidden
+    >
+      {team.shortName.slice(0, 4)}
+    </span>
+  );
+}
+
+// Team identity chip: crest (or colour dot for custom teams) and short name.
+export function TeamTag({ shortName, color, name, logoUrl, className }: TeamIdentity & { className?: string }) {
+  const hasCrest = !!teamLogoUrl({ name, shortName, logoUrl });
+  return (
+    <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-pitch-2 py-0.5 font-display text-sm font-bold tracking-wider text-ink', hasCrest ? 'pl-1 pr-2.5' : 'px-2.5', className)}>
+      {hasCrest ? (
+        <TeamLogo team={{ name, shortName, color, logoUrl }} size={18} />
+      ) : (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color || '#8390bd' }} aria-hidden />
+      )}
       {shortName}
     </span>
   );
