@@ -31,16 +31,17 @@ import {
   DEFAULT_CATEGORIES,
   DEFAULT_SETTINGS,
   advance,
-  biddingClosed,
+  bidLockRemaining,
   clampDelay,
-  clampTimer,
   endAuction,
-  extendClock,
+  lockBidding,
+  markLotLoaded,
   markUnsold,
   nextDeadline,
   normalizeRoom,
+  openBidding,
   pause,
-  recordBidOnClock,
+  removeParticipant,
   resume,
   sellCurrent,
   startAuction,
@@ -159,7 +160,7 @@ export function findRoom(idOrCode: string): AuctionRoomState | undefined {
 }
 
 // Stamp the server clock on outgoing room state so clients can correct for skew
-// when counting down bidEndsAt / nextPlayerAt.
+// when counting down bidLockedUntil / nextPlayerAt.
 function stamp(room: AuctionRoomState): AuctionRoomState {
   room.serverTime = new Date().toISOString();
   return room;
@@ -178,13 +179,26 @@ function broadcastToRoom(roomId: string, message: WSMessage) {
 }
 
 // -----------------------------------------------------------------------------
-// Auction clock: one timeout per room, always aimed at the room's next deadline
-// (lot closing or auto-advance). State transitions live in src/services/auctionEngine.ts.
+// Auction clock: one timeout per room, aimed at the room's next deadline
+// (the auto-advance after a sale). State transitions live in src/services/auctionEngine.ts.
 // -----------------------------------------------------------------------------
 const roomTimers = new Map<string, NodeJS.Timeout>();
 
 function broadcastRoom(room: AuctionRoomState) {
   broadcastToRoom(room.id, { type: 'ROOM_STATE', roomId: room.id, payload: room, timestamp: new Date().toISOString() });
+}
+
+// Tells a removed participant's open sockets and drops them from the room.
+function disconnectParticipant(roomId: string, participantId: string) {
+  const sockets = roomSockets[roomId];
+  if (!sockets) return;
+  const notice = JSON.stringify({ type: 'KICKED', roomId, timestamp: new Date().toISOString() });
+  for (const client of [...sockets]) {
+    if (socketMeta.get(client)?.participantId !== participantId) continue;
+    if (client.readyState === WebSocket.OPEN) client.send(notice);
+    sockets.delete(client);
+    socketMeta.delete(client);
+  }
 }
 
 function scheduleRoom(room: AuctionRoomState) {
@@ -329,7 +343,6 @@ app.post('/api/rooms', async (req, res) => {
     ],
     categoriesOrder: [...DEFAULT_CATEGORIES],
     isPublic: settings?.isPublic !== false,
-    bidTimerSeconds: settings?.bidTimerSeconds === undefined ? DEFAULT_SETTINGS.bidTimerSeconds : clampTimer(settings.bidTimerSeconds),
     autoAdvance: typeof settings?.autoAdvance === 'boolean' ? settings.autoAdvance : DEFAULT_SETTINGS.autoAdvance,
     autoAdvanceDelaySeconds:
       settings?.autoAdvanceDelaySeconds === undefined ? DEFAULT_SETTINGS.autoAdvanceDelaySeconds : clampDelay(settings.autoAdvanceDelaySeconds),
@@ -368,11 +381,13 @@ app.post('/api/rooms', async (req, res) => {
     unsoldPlayerIds: [],
     eventSequenceNumber: 1,
     createdAt: new Date().toISOString(),
-    bidEndsAt: null,
+    bidLockedUntil: null,
     pausedRemainingMs: null,
     nextPlayerAt: null,
     serverTime: new Date().toISOString(),
     round: 'MAIN',
+    lotLoadedBy: [],
+    kickedParticipantIds: [],
     playingXIs: {},
   };
 
@@ -509,6 +524,11 @@ wss.on('connection', (ws) => {
 
       // Track socket connection
       if (type === 'AUTH_JOIN') {
+        // A removed team owner's phone reconnecting: tell it, and keep it out of the room.
+        if (participantId && room.kickedParticipantIds.includes(participantId)) {
+          ws.send(JSON.stringify({ type: 'KICKED', roomId, timestamp: new Date().toISOString() }));
+          return;
+        }
         if (!roomSockets[roomId]) {
           roomSockets[roomId] = new Set();
         }
@@ -535,6 +555,12 @@ wss.on('connection', (ws) => {
           payload: room,
           timestamp: new Date().toISOString(),
         });
+        return;
+      }
+
+      // Team owner: the player on stage has loaded on this phone.
+      if (type === 'LOT_LOADED') {
+        if (participantId && markLotLoaded(room, participantId, payload?.playerId)) commit(room);
         return;
       }
 
@@ -574,6 +600,7 @@ wss.on('connection', (ws) => {
       // Auctioneer-only Actions
       if (
         type === 'START_AUCTION' ||
+        type === 'OPEN_BIDDING' ||
         type === 'PAUSE_AUCTION' ||
         type === 'RESUME_AUCTION' ||
         type === 'SELL_PLAYER' ||
@@ -581,7 +608,6 @@ wss.on('connection', (ws) => {
         type === 'NEXT_PLAYER' ||
         type === 'END_AUCTION' ||
         type === 'KICK_PARTICIPANT' ||
-        type === 'EXTEND_TIMER' ||
         type === 'UPDATE_SETTINGS' ||
         type === 'UNDO_LAST_SALE'
       ) {
@@ -600,6 +626,8 @@ wss.on('connection', (ws) => {
         let changed = false;
         if (type === 'START_AUCTION') {
           changed = startAuction(room, now);
+        } else if (type === 'OPEN_BIDDING') {
+          changed = openBidding(room);
         } else if (type === 'PAUSE_AUCTION') {
           // BIDDING -> PAUSED; during SOLD / UNSOLD it holds the auto-advance instead.
           changed = pause(room, now);
@@ -610,10 +638,8 @@ wss.on('connection', (ws) => {
         } else if (type === 'MARK_UNSOLD') {
           changed = markUnsold(room, now);
         } else if (type === 'NEXT_PLAYER') {
-          // From SOLD / UNSOLD (cancels the pending auto-advance) or BIDDING (skip counts as unsold).
+          // From SOLD / UNSOLD (cancels the pending auto-advance) or a live lot (skip counts as unsold).
           changed = advance(room, now);
-        } else if (type === 'EXTEND_TIMER') {
-          changed = extendClock(room, payload?.seconds, now);
         } else if (type === 'UPDATE_SETTINGS') {
           changed = updateClockSettings(room, payload, now);
         } else if (type === 'UNDO_LAST_SALE') {
@@ -626,15 +652,9 @@ wss.on('connection', (ws) => {
           endAuction(room, now);
           changed = true;
         } else if (type === 'KICK_PARTICIPANT') {
-          const targetPartId = payload?.participantId;
-          if (targetPartId && room.participants[targetPartId]) {
-            const p = room.participants[targetPartId];
-            if (p.teamId && room.teams[p.teamId]) {
-              delete room.teams[p.teamId];
-            }
-            delete room.participants[targetPartId];
-            changed = true;
-          }
+          const targetId = String(payload?.participantId ?? '');
+          changed = removeParticipant(room, targetId, now);
+          if (changed) disconnectParticipant(roomId, targetId);
         }
 
         if (!changed) return;
@@ -647,14 +667,18 @@ wss.on('connection', (ws) => {
 
       // Participant Action: PLACE_BID
       if (type === 'PLACE_BID') {
-        if (room.status === 'COMPLETED' || room.status !== 'BIDDING') {
+        if (room.status === 'PLAYER_PRESENTED') {
+          ws.send(JSON.stringify({ type: 'BID_REJECTED', payload: { reason: 'Bidding has not opened yet. Wait for the auctioneer.' } }));
+          return;
+        }
+        if (room.status !== 'BIDDING') {
           ws.send(JSON.stringify({ type: 'BID_REJECTED', payload: { reason: 'Auction is not in active bidding state.' } }));
           return;
         }
 
-        // The clock has run out but the close hasn't been processed yet.
-        if (biddingClosed(room, Date.now())) {
-          ws.send(JSON.stringify({ type: 'BID_REJECTED', payload: { reason: 'Too late: bidding on this player has closed.' } }));
+        // Every bid holds the room for a moment so everyone sees the new price first.
+        if (bidLockRemaining(room, Date.now()) > 0) {
+          ws.send(JSON.stringify({ type: 'BID_REJECTED', payload: { reason: 'Bidding is locked for a moment after each bid. Try again.' } }));
           return;
         }
 
@@ -748,8 +772,7 @@ wss.on('connection', (ws) => {
         if (room.recentBids.length > 25) {
           room.recentBids.pop();
         }
-        // Every accepted bid gives the room a full clock again.
-        recordBidOnClock(room, Date.now());
+        lockBidding(room, Date.now());
 
         syncBidToSupabase(room, newBid);
         commit(room);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Users, Copy, Check, Share2, Play, UserPlus, Tv, Timer, Wallet, Globe, ShieldCheck, Pencil } from 'lucide-react';
+import { Users, Copy, Check, Share2, Play, UserPlus, Tv, Lock, Wallet, Globe, ShieldCheck, Pencil } from 'lucide-react';
 import { AuctionRoomState } from '../types';
 import { FRANCHISES } from '../data/franchises';
 import { Button, EmptyState, Notice, Panel, PanelHeader, TeamLogo, TeamTag, TextField } from './ui';
@@ -40,7 +40,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
   const teamList = Object.values(teams);
   const roomFull = teamList.length >= MAX_TEAMS;
   const takenShortNames = new Set(teamList.map((t) => t.shortName.toUpperCase()));
-  const timer = settings.bidTimerSeconds ?? 0;
 
   const shareCode = roomState.roomCode || roomState.id;
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/join/${shareCode}` : '';
@@ -143,7 +142,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
           • Purse <span className="font-semibold text-ipl-gold">₹{myTeam.startingPurse} Cr</span>, up to {settings.maxSquadSize} players and 8 overseas.
         </li>
         <li>• Keep ₹0.20 Cr for every squad slot you still need to fill.</li>
-        {timer > 0 && <li>• Each bid resets a {timer}s clock. When it hits zero, the hammer falls.</li>}
+        <li>• Bidding opens when the auctioneer says go. After every bid the paddles lock for a moment.</li>
       </ul>
     </motion.section>
   ) : (
@@ -279,7 +278,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
               <RuleChip icon={<Wallet className="h-3.5 w-3.5" />}>₹{settings.startingPurse} Cr purse</RuleChip>
               <RuleChip icon={<Users className="h-3.5 w-3.5" />}>{settings.maxSquadSize}-player squads</RuleChip>
               <RuleChip icon={<Globe className="h-3.5 w-3.5" />}>Max 8 overseas</RuleChip>
-              <RuleChip icon={<Timer className="h-3.5 w-3.5" />}>{timer > 0 ? `${timer}s bid clock` : 'Auctioneer calls every lot'}</RuleChip>
+              <RuleChip icon={<Lock className="h-3.5 w-3.5" />}>Auctioneer calls every lot</RuleChip>
             </div>
           </div>
           <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-night/50 p-4 md:items-end md:text-right">

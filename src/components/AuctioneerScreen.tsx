@@ -2,16 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { celebrate } from '../utils/celebrate';
 import { AnimatePresence, motion } from 'motion/react';
-import { Play, Pause, Gavel, XCircle, SkipForward, StopCircle, Users, Globe, Copy, Check, Share2, Eye, UserX, Plus, Undo2, Zap, Trophy, Keyboard } from 'lucide-react';
+import { Play, Pause, Gavel, XCircle, SkipForward, StopCircle, Users, Globe, Copy, Check, Share2, Eye, UserX, Undo2, Zap, Trophy, Keyboard, Lock, Unlock, Smartphone } from 'lucide-react';
 import { AuctionRoomState, AuctionSettings } from '../types';
-import { formatLotSet, formatPrice, formatRole } from '../utils/format';
-import { Button, CountUp, DeltaPop, Drawer, EmptyState, Modal, Notice, Panel, PlayerPhoto, Price, StatusBadge, TeamLogo, TeamTag, Toast } from './ui';
+import { BID_LOCK_MS, formatLotSet, formatPrice, formatRole } from '../utils/format';
+import { Button, CountUp, DeltaPop, Drawer, EmptyState, Modal, Notice, Panel, PlayerPhoto, Price, StatusBadge, TeamLogo, TeamTag, Toast, useIsPhone } from './ui';
 import { PlayerStats } from './PlayerStats';
 import { LotWipe } from './LotWipe';
-import { BidClock } from './live/BidClock';
 import { NextPlayerBeat } from './live/NextPlayerBeat';
 import { PurseTicker } from './live/PurseTicker';
 import { TimerSettings } from './live/TimerSettings';
+import { useCountdown } from '../hooks/useCountdown';
 
 interface AuctioneerScreenProps {
   roomState: AuctionRoomState;
@@ -20,6 +20,7 @@ interface AuctioneerScreenProps {
   lastError: string | null;
   serverOffsetMs: number;
   onStartAuction: () => void;
+  onOpenBidding: () => void;
   onPauseAuction: () => void;
   onResumeAuction: () => void;
   onSellPlayer: () => void;
@@ -27,8 +28,7 @@ interface AuctioneerScreenProps {
   onNextPlayer: () => void;
   onEndAuction: () => void;
   onKickParticipant: (participantId: string) => void;
-  onExtendTimer: (seconds: number) => void;
-  onUpdateSettings: (patch: Partial<Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds'>>) => void;
+  onUpdateSettings: (patch: Partial<Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds'>>) => void;
   onUndoLastSale: () => void;
 }
 
@@ -36,11 +36,11 @@ const MAX_TEAMS = 10;
 const SPLASH_MS = 3200;
 
 const SHORTCUTS: [string, string][] = [
+  ['B', 'Open bidding'],
   ['S', 'Sold'],
   ['U', 'Unsold'],
   ['N', 'Next'],
   ['P', 'Pause'],
-  ['T', '+10s'],
 ];
 
 export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
@@ -49,6 +49,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
   lastError,
   serverOffsetMs,
   onStartAuction,
+  onOpenBidding,
   onPauseAuction,
   onResumeAuction,
   onSellPlayer,
@@ -56,7 +57,6 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
   onNextPlayer,
   onEndAuction,
   onKickParticipant,
-  onExtendTimer,
   onUpdateSettings,
   onUndoLastSale,
 }) => {
@@ -88,7 +88,6 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
 
-  const timerSeconds = settings.bidTimerSeconds ?? 0;
   const autoAdvance = !!settings.autoAdvance;
   const advanceDelay = settings.autoAdvanceDelaySeconds ?? 5;
   const displayCode = roomCode || id;
@@ -98,9 +97,17 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
   const lotBids = currentPlayer ? recentBids.filter((b) => b.playerId === currentPlayer.id) : [];
   const inLobby = status === 'LOBBY' || status === 'READY';
   const canSell = status === 'BIDDING' && !!currentPlayer && !!currentHighestBidderTeamId;
-  const canMarkUnsold = status === 'BIDDING' && !!currentPlayer;
+  const presented = status === 'PLAYER_PRESENTED' && !!currentPlayer;
+  const canMarkUnsold = (status === 'BIDDING' || presented) && !!currentPlayer;
   const canAdvance = status === 'SOLD' || status === 'UNSOLD';
-  const canExtend = timerSeconds > 0 && (status === 'BIDDING' || status === 'PAUSED');
+  // Phones that have the player on stage loaded, out of the team owners in the room.
+  const loadedCount = teamList.filter((t) => roomState.lotLoadedBy?.includes(t.ownerParticipantId)).length;
+  const lock = useCountdown(status === 'BIDDING' ? roomState.bidLockedUntil : null, serverOffsetMs);
+  const locked = !!lock && lock.msLeft > 0;
+  const kickTeam = kickCandidate ? teamList.find((t) => t.ownerParticipantId === kickCandidate) : undefined;
+  // Phone-width control: a two-row sticky bar so the stage stays visible.
+  const compactBar = useIsPhone() && canControl && !inLobby;
+  const secondarySize = compactBar ? 'md' : 'lg';
   const overlayOpen = showEndConfirm || showTeams || !!kickCandidate || showUndoConfirm;
 
   // Most expensive sale so far, and whether the latest sale just set it.
@@ -144,18 +151,18 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement)?.closest('input, textarea, select, [role="dialog"]')) return;
       const key = e.key.toLowerCase();
-      if (key === 's' && canSell) onSellPlayer();
+      if (key === 'b' && presented) onOpenBidding();
+      else if (key === 's' && canSell) onSellPlayer();
       else if (key === 'u' && canMarkUnsold) onMarkUnsold();
       else if (key === 'n' && canAdvance) onNextPlayer();
       else if (key === 'p' && status === 'BIDDING') onPauseAuction();
       else if (key === 'p' && status === 'PAUSED') onResumeAuction();
-      else if (key === 't' && canExtend) onExtendTimer(10);
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canControl, overlayOpen, canSell, canMarkUnsold, canAdvance, canExtend, status, onSellPlayer, onMarkUnsold, onNextPlayer, onPauseAuction, onResumeAuction, onExtendTimer]);
+  }, [canControl, overlayOpen, presented, canSell, canMarkUnsold, canAdvance, status, onOpenBidding, onSellPlayer, onMarkUnsold, onNextPlayer, onPauseAuction, onResumeAuction]);
 
   const copy = (what: 'code' | 'link') => {
     navigator.clipboard?.writeText(what === 'code' ? displayCode : joinUrl).then(() => {
@@ -176,20 +183,20 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
     <div className="flex min-h-[calc(100dvh-4rem)] flex-col">
       {/* Broadcast strip */}
       <div className="border-b border-line bg-pitch/60">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <span className="-skew-x-12 bg-ipl-orange px-3 py-1 font-display text-lg font-extrabold uppercase tracking-wide text-night">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+            <span className="-skew-x-12 bg-ipl-orange px-3 py-1 font-display text-base font-extrabold uppercase tracking-wide text-night sm:text-lg">
               <span className="inline-block skew-x-12">{currentPlayer ? formatLotSet(currentPlayer.category, roomState.currentSet) : 'Waiting room'}</span>
             </span>
             {roomState.round === 'ACCELERATED' && (
-              <span className="inline-flex -skew-x-12 items-center bg-ipl-gold px-3 py-1 font-display text-lg font-extrabold uppercase tracking-wide text-night">
+              <span className="inline-flex -skew-x-12 items-center bg-ipl-gold px-3 py-1 font-display text-base font-extrabold uppercase tracking-wide text-night sm:text-lg">
                 <span className="inline-flex skew-x-12 items-center gap-1.5">
                   <Zap className="h-4 w-4" aria-hidden /> Accelerated round
                 </span>
               </span>
             )}
             {currentAuctionIndex > 0 && (
-              <span className="font-display text-lg font-semibold tabular text-ink-2">
+              <span className="font-display text-base font-semibold tabular text-ink-2 sm:text-lg">
                 Player {currentAuctionIndex} of {totalPlayersInPool}
               </span>
             )}
@@ -202,10 +209,22 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                 <span className="font-display font-bold tabular text-ipl-gold">{formatPrice(record.soldPrice)}</span>
               </span>
             )}
-            <StatusBadge status={status} />
+            {/* The navbar already shows the status on phones. */}
+            <span className={compactBar ? 'hidden' : 'contents'}>
+              <StatusBadge status={status} />
+            </span>
             <Button size="sm" icon={<Users className="h-4 w-4" />} onClick={() => setShowTeams(true)}>
               Teams ({teamList.length})
             </Button>
+            {/* On phones the sticky bar keeps only the hammer controls; these move up here. */}
+            {compactBar && (
+              <>
+                <TimerSettings placement="down" settings={{ autoAdvance, autoAdvanceDelaySeconds: advanceDelay }} onChange={onUpdateSettings} />
+                <Button size="sm" variant="ghost" icon={<StopCircle className="h-4 w-4" />} onClick={() => setShowEndConfirm(true)}>
+                  End
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -221,12 +240,12 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
         </div>
       )}
 
-      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-6 sm:px-6 lg:py-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-4 sm:px-6 sm:py-6 lg:py-8">
         {currentPlayer ? (
-          <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)] lg:items-start lg:gap-12">
+          <div className="grid items-center gap-5 sm:gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)] lg:items-start lg:gap-12">
             {/* Player card: top-aligned with the name so the stage reads left to right with no dead band above it */}
             <div className="flex flex-col items-center lg:sticky lg:top-24 lg:items-start">
-              <div className="relative aspect-[4/5] w-full max-w-[340px] xl:max-w-[380px]">
+              <div className="relative aspect-[4/5] w-full max-w-[160px] sm:max-w-[300px] lg:max-w-[340px] xl:max-w-[380px]">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.div
                     key={currentPlayer.id}
@@ -252,13 +271,13 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                   </motion.div>
                 </AnimatePresence>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-line bg-pitch-2 px-3 py-1 font-display text-base font-bold uppercase tracking-wide text-ink">{formatRole(currentPlayer.role)}</span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-pitch-2 px-3 py-1 font-display text-base font-bold uppercase tracking-wide text-ink">
+              <div className="mt-3 flex flex-wrap justify-center gap-2 sm:mt-4 lg:justify-start">
+                <span className="rounded-full border border-line bg-pitch-2 px-3 py-1 font-display text-sm font-bold uppercase tracking-wide text-ink sm:text-base">{formatRole(currentPlayer.role)}</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-pitch-2 px-3 py-1 font-display text-sm font-bold uppercase tracking-wide text-ink sm:text-base">
                   {currentPlayer.isOverseas && <Globe className="h-4 w-4 text-ipl-blue-bright" aria-hidden />}
                   {currentPlayer.isOverseas ? 'Overseas' : 'Indian'}
                 </span>
-                <span className="rounded-full border border-line bg-pitch-2 px-3 py-1 font-display text-base font-bold uppercase tracking-wide text-ink">
+                <span className="rounded-full border border-line bg-pitch-2 px-3 py-1 font-display text-sm font-bold uppercase tracking-wide text-ink sm:text-base">
                   Base <span className="text-ipl-gold">{formatPrice(currentPlayer.basePrice)}</span>
                 </span>
               </div>
@@ -275,15 +294,15 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                     exit={{ y: '-105%', transition: { duration: 0.2, ease: 'easeIn' } }}
                     transition={{ duration: 0.55, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <h1 className="font-display text-5xl font-extrabold uppercase italic leading-[0.95] tracking-tight text-ink sm:text-6xl xl:text-7xl">{currentPlayer.name}</h1>
-                    <p className="mt-2 text-lg text-ink-2">
+                    <h1 className="font-display text-4xl font-extrabold uppercase italic leading-[0.95] tracking-tight text-ink sm:text-6xl xl:text-7xl">{currentPlayer.name}</h1>
+                    <p className="mt-2 text-base text-ink-2 sm:text-lg">
                       {currentPlayer.nationality} · Last IPL team: {currentPlayer.previousIPLTeam}
                     </p>
                   </motion.div>
                 </AnimatePresence>
               </div>
 
-              <div className="relative mt-6 overflow-hidden rounded-2xl border border-line bg-pitch/70">
+              <div className="relative mt-4 overflow-hidden rounded-2xl border border-line bg-pitch/70 sm:mt-6">
                 {/* Flash in the leading team's colour on every new bid */}
                 <AnimatePresence>
                   {leadingTeam && (
@@ -299,9 +318,9 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                     />
                   )}
                 </AnimatePresence>
-                <div className="relative grid gap-6 p-5 sm:grid-cols-2">
+                <div className="relative grid gap-4 p-4 sm:grid-cols-2 sm:gap-6 sm:p-5">
                   <div className="relative">
-                    <p className="font-display text-lg font-semibold uppercase tracking-widest text-ink-3">{status === 'SOLD' ? 'Sold for' : leadingTeam ? 'Current bid' : 'Opening bid'}</p>
+                    <p className="font-display text-base font-semibold uppercase tracking-widest text-ink-3 sm:text-lg">{status === 'SOLD' ? 'Sold for' : leadingTeam ? 'Current bid' : presented ? 'Base price' : 'Opening bid'}</p>
                     {/* The raise itself, rising off the price: shows how far each bid moved it */}
                     <DeltaPop value={currentBid} resetKey={currentPlayer.id} format={(d) => `+${formatPrice(d)}`} className="right-0 top-0" />
                     <AnimatePresence mode="popLayout" initial={false}>
@@ -311,14 +330,14 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                         animate={{ y: 0, opacity: 1, scale: 1 }}
                         exit={{ y: -18, opacity: 0 }}
                         transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                        className="whitespace-nowrap font-display text-7xl font-extrabold leading-none tabular text-ipl-gold xl:text-8xl"
+                        className="whitespace-nowrap font-display text-6xl font-extrabold leading-none tabular text-ipl-gold sm:text-7xl xl:text-8xl"
                       >
                         {formatPrice(currentBid)}
                       </motion.p>
                     </AnimatePresence>
                   </div>
                   <div className="min-w-0">
-                    <p className="font-display text-lg font-semibold uppercase tracking-widest text-ink-3">{status === 'SOLD' ? 'Bought by' : 'Leading'}</p>
+                    <p className="font-display text-base font-semibold uppercase tracking-widest text-ink-3 sm:text-lg">{status === 'SOLD' ? 'Bought by' : 'Leading'}</p>
                     <AnimatePresence mode="wait" initial={false}>
                       {leadingTeam ? (
                         <motion.div
@@ -335,41 +354,65 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                             animate={{ scale: 1, rotate: 0 }}
                             transition={{ type: 'spring', stiffness: 420, damping: 16 }}
                           >
-                            <TeamLogo team={leadingTeam} size={64} />
+                            <TeamLogo team={leadingTeam} size={64} className="h-12 w-12 sm:h-16 sm:w-16" />
                           </motion.span>
                           <div className="min-w-0">
-                            <p className="truncate font-display text-4xl font-extrabold uppercase leading-tight text-ink">{leadingTeam.name}</p>
+                            <p className="truncate font-display text-3xl font-extrabold uppercase leading-tight text-ink sm:text-4xl">{leadingTeam.name}</p>
                             <p className="text-ink-2">
                               Purse {status === 'SOLD' ? 'now' : 'after this bid'}: {formatPrice(status === 'SOLD' ? leadingTeam.remainingPurse : leadingTeam.remainingPurse - currentBid)}
                             </p>
                           </div>
                         </motion.div>
                       ) : (
-                        <motion.p key="none" className="mt-1 font-display text-3xl font-bold uppercase text-ink-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          {status === 'PAUSED' ? 'Bidding paused' : status === 'UNSOLD' ? 'No takers' : 'Waiting for the opening bid'}
+                        <motion.p key="none" className="mt-1 font-display text-2xl font-bold uppercase text-ink-3 sm:text-3xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          {status === 'PAUSED' ? 'Bidding paused' : status === 'UNSOLD' ? 'No takers' : presented ? 'Bidding not open yet' : 'Waiting for the opening bid'}
                         </motion.p>
                       )}
                     </AnimatePresence>
                   </div>
                 </div>
-                {timerSeconds > 0 && (status === 'BIDDING' || status === 'PAUSED') && (
-                  <div className="relative border-t border-line px-5 py-3">
-                    <BidClock
-                      status={status}
-                      bidEndsAt={roomState.bidEndsAt ?? null}
-                      pausedRemainingMs={roomState.pausedRemainingMs ?? null}
-                      bidTimerSeconds={timerSeconds}
-                      serverOffsetMs={serverOffsetMs}
-                      bidVersion={currentBidVersion}
-                      audible
-                      hasBids={!!leadingTeam}
-                      size={84}
-                    />
+                {presented && (
+                  <div className="relative flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-5" role="status">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide text-ipl-gold">
+                        <Lock className="h-5 w-5" aria-hidden /> Bidding locked
+                      </p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-sm text-ink-2">
+                        <Smartphone className="h-4 w-4 shrink-0" aria-hidden />
+                        {teamList.length === 0 ? 'No teams in the room' : `Player loaded on ${loadedCount} of ${teamList.length} team phones`}
+                      </p>
+                    </div>
+                    {canControl && (
+                      <Button variant="primary" size="lg" icon={<Unlock className="h-5 w-5" />} onClick={onOpenBidding} className="hidden sm:inline-flex" title="Open bidding (B)">
+                        Open bidding
+                      </Button>
+                    )}
+                    {teamList.length > 0 && (
+                      <ul className="flex w-full flex-wrap gap-1.5" aria-label="Loaded on phones">
+                        {teamList.map((t) => {
+                          const ready = roomState.lotLoadedBy?.includes(t.ownerParticipantId);
+                          return (
+                            <li
+                              key={t.id}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-display text-xs font-bold tracking-wide ${ready ? 'border-live/50 bg-live/10 text-live' : 'border-line text-ink-3'}`}
+                            >
+                              {ready ? <Check className="h-3 w-3" aria-hidden /> : <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-3" aria-hidden />}
+                              {t.shortName}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {locked && (
+                  <div className="absolute inset-x-0 bottom-0 h-1 bg-pitch-3" role="status" aria-label="Bids locked for a moment">
+                    <div className="h-full bg-ipl-orange" style={{ width: `${Math.min(1, lock!.msLeft / BID_LOCK_MS) * 100}%`, transition: 'width 100ms linear' }} />
                   </div>
                 )}
               </div>
 
-              <div className="mt-4">
+              <div className="mt-3 sm:mt-4">
                 <NextPlayerBeat
                   status={status}
                   nextPlayerAt={roomState.nextPlayerAt ?? null}
@@ -388,11 +431,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                 />
               </div>
 
-              <div className="mt-6">
-                <PlayerStats key={currentPlayer.id} player={currentPlayer} />
-              </div>
-
-              <div className="mt-6 flex items-center gap-3 overflow-x-auto no-scrollbar" aria-label="Recent bids">
+              <div className="mt-4 flex items-center gap-3 overflow-x-auto no-scrollbar sm:mt-6" aria-label="Recent bids">
                 <span className="shrink-0 text-sm text-ink-3">Bids</span>
                 {lotBids.length === 0 ? (
                   <span className="text-sm text-ink-3">No bids yet</span>
@@ -415,15 +454,19 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                   </AnimatePresence>
                 )}
               </div>
+
+              <div className="mt-4 sm:mt-6">
+                <PlayerStats key={currentPlayer.id} player={currentPlayer} />
+              </div>
             </div>
           </div>
         ) : inLobby ? (
           <div className="space-y-6">
-            <Panel className="relative grid items-center gap-8 overflow-hidden p-6 sm:p-8 md:grid-cols-[minmax(0,1fr)_auto]">
+            <Panel className="relative grid items-center gap-6 overflow-hidden p-5 sm:gap-8 sm:p-8 md:grid-cols-[minmax(0,1fr)_auto]">
               <div className="absolute inset-x-0 top-0 h-1 stripe-ipl" aria-hidden />
               <div className="min-w-0">
                 <p className="font-display text-lg font-semibold uppercase tracking-widest text-ink-3">Join on your phone</p>
-                <p className="mt-1 select-all font-display text-7xl font-extrabold tracking-[0.18em] text-ipl-gold sm:text-8xl">{displayCode}</p>
+                <p className="mt-1 select-all font-display text-6xl font-extrabold tracking-[0.18em] text-ipl-gold sm:text-8xl">{displayCode}</p>
                 <p className="mt-3 break-all text-ink-2">{joinUrl}</p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   <Button size="sm" icon={copied === 'code' ? <Check className="h-4 w-4 text-live" /> : <Copy className="h-4 w-4" />} onClick={() => copy('code')}>
@@ -440,7 +483,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                   {[
                     ['Purse', `₹${settings.startingPurse} Cr`],
                     ['Squad', `${settings.maxSquadSize} max`],
-                    ['Lot timer', timerSeconds > 0 ? `${timerSeconds}s` : 'Off'],
+                    ['Bid lock', `${BID_LOCK_MS / 1000}s per bid`],
                     ['Next player', autoAdvance ? `Auto, ${advanceDelay}s` : 'Manual'],
                   ].map(([k, v]) => (
                     <div key={k}>
@@ -450,7 +493,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                   ))}
                 </dl>
               </div>
-              <div className="mx-auto w-52 rounded-2xl bg-white p-3 shadow-[0_20px_50px_-20px_rgb(0_0_0/0.8)] sm:w-60">
+              <div className="mx-auto w-44 rounded-2xl bg-white p-3 shadow-[0_20px_50px_-20px_rgb(0_0_0/0.8)] sm:w-60">
                 {qrDataUrl ? (
                   <img src={qrDataUrl} alt={`QR code to join room ${displayCode}`} className="aspect-square w-full" />
                 ) : (
@@ -469,7 +512,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
               {teamList.length === 0 ? (
                 <p className="text-ink-2">No teams yet. Owners scan the code to register; you can start with any number of teams.</p>
               ) : (
-                <ul className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                   <AnimatePresence initial={false}>
                     {teamList.map((t) => (
                       <motion.li
@@ -482,6 +525,16 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                         className="relative overflow-hidden rounded-xl border border-line bg-night/60 p-3 pt-4"
                       >
                         <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: t.color || '#8390bd' }} aria-hidden />
+                        {canControl && (
+                          <button
+                            onClick={() => setKickCandidate(t.ownerParticipantId)}
+                            className="absolute right-1 top-2 flex h-11 w-11 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-danger/10 hover:text-danger"
+                            aria-label={`Remove ${t.name}`}
+                            title={`Remove ${t.name}`}
+                          >
+                            <UserX className="h-4 w-4" />
+                          </button>
+                        )}
                         <TeamLogo team={t} size={48} className="mb-2" />
                         <p className="truncate font-display text-lg font-bold uppercase tracking-wide text-ink">{t.name}</p>
                         <p className="flex items-center gap-1.5 text-sm text-ink-3">
@@ -503,48 +556,56 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
       {!inLobby && <PurseTicker teams={teamList} leaderId={currentHighestBidderTeamId} maxSquadSize={settings.maxSquadSize} maxOverseas={settings.maxOverseas} />}
 
       {canControl && (
-        <div className="sticky bottom-0 z-30 border-t border-line bg-night/90 backdrop-blur-md">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2.5 px-4 py-3 sm:px-6">
+        <div className="sticky bottom-0 z-30 border-t border-line bg-night/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-3 sm:gap-2.5 sm:px-6">
             {inLobby ? (
               <Button variant="primary" size="xl" icon={<Play className="h-6 w-6" />} onClick={onStartAuction} className="w-full sm:w-auto">
                 Start auction
               </Button>
             ) : (
-              <>
-                <Button
-                  variant="success"
-                  size="xl"
-                  icon={<Gavel className="h-6 w-6" />}
-                  disabled={!canSell}
-                  onClick={onSellPlayer}
-                  title={canSell ? `Sell to ${leadingTeam?.name} (S)` : 'Available after the first bid'}
-                >
-                  Sold
-                </Button>
-                <Button variant="danger" size="lg" icon={<XCircle className="h-5 w-5" />} disabled={!canMarkUnsold} onClick={onMarkUnsold} title="Unsold (U)">
+              <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:gap-2.5">
+                {presented ? (
+                  <Button variant="primary" size={compactBar ? 'lg' : 'xl'} icon={<Unlock className="h-6 w-6" />} onClick={onOpenBidding} title="Open bidding (B)" className="col-span-3">
+                    Open bidding
+                  </Button>
+                ) : (
+                  <Button
+                    variant="success"
+                    size={compactBar ? 'lg' : 'xl'}
+                    icon={<Gavel className="h-6 w-6" />}
+                    disabled={!canSell}
+                    onClick={onSellPlayer}
+                    title={canSell ? `Sell to ${leadingTeam?.name} (S)` : 'Available after the first bid'}
+                    className="col-span-3"
+                  >
+                    Sold
+                  </Button>
+                )}
+                <Button variant="danger" size={secondarySize} icon={<XCircle className="h-5 w-5" />} disabled={!canMarkUnsold} onClick={onMarkUnsold} title="Unsold (U)" className="px-2 sm:px-5">
                   Unsold
                 </Button>
-                <Button size="lg" icon={<SkipForward className="h-5 w-5" />} disabled={!canAdvance} onClick={onNextPlayer} title={canAdvance ? 'Bring up the next player (N)' : 'Call Sold or Unsold first'}>
-                  Next
-                </Button>
+                {status === 'SOLD' && compactBar ? (
+                  <Button size={secondarySize} icon={<Undo2 className="h-5 w-5" />} onClick={() => setShowUndoConfirm(true)} className="px-2">
+                    Undo
+                  </Button>
+                ) : (
+                  <Button size={secondarySize} icon={<SkipForward className="h-5 w-5" />} disabled={!canAdvance} onClick={onNextPlayer} title={canAdvance ? 'Bring up the next player (N)' : 'Call Sold or Unsold first'} className="px-2 sm:px-5">
+                    Next
+                  </Button>
+                )}
                 {status === 'PAUSED' ? (
-                  <Button size="lg" icon={<Play className="h-5 w-5" />} onClick={onResumeAuction} title="Resume (P)">
+                  <Button size={secondarySize} icon={<Play className="h-5 w-5" />} onClick={onResumeAuction} title="Resume (P)" className="px-2 sm:px-5">
                     Resume
                   </Button>
                 ) : (
-                  <Button size="lg" icon={<Pause className="h-5 w-5" />} disabled={status !== 'BIDDING'} onClick={onPauseAuction} title="Pause (P)">
+                  <Button size={secondarySize} icon={<Pause className="h-5 w-5" />} disabled={status !== 'BIDDING'} onClick={onPauseAuction} title="Pause (P)" className="px-2 sm:px-5">
                     Pause
                   </Button>
                 )}
-                {timerSeconds > 0 && (
-                  <Button size="lg" icon={<Plus className="h-5 w-5" />} disabled={!canExtend} onClick={() => onExtendTimer(10)} title="Add 10 seconds to the clock (T)">
-                    10s
-                  </Button>
-                )}
-              </>
+              </div>
             )}
 
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className={`w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto ${compactBar ? 'hidden' : 'flex'}`}>
               {!inLobby && (
                 <span className="mr-1 hidden items-center gap-1.5 text-xs text-ink-3 xl:inline-flex" aria-label="Keyboard shortcuts">
                   <Keyboard className="h-4 w-4" aria-hidden />
@@ -561,7 +622,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                   Undo sale
                 </Button>
               )}
-              <TimerSettings settings={{ bidTimerSeconds: timerSeconds, autoAdvance, autoAdvanceDelaySeconds: advanceDelay }} onChange={onUpdateSettings} />
+              <TimerSettings settings={{ autoAdvance, autoAdvanceDelaySeconds: advanceDelay }} onChange={onUpdateSettings} />
               <Button variant="ghost" icon={<StopCircle className="h-5 w-5" />} onClick={() => setShowEndConfirm(true)}>
                 End
               </Button>
@@ -674,7 +735,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                     {canControl && (
                       <button
                         onClick={() => setKickCandidate(team.ownerParticipantId)}
-                        className="rounded-lg p-2 text-ink-3 transition-colors hover:bg-danger/10 hover:text-danger"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-danger/10 hover:text-danger"
                         aria-label={`Remove ${team.name}`}
                         title={`Remove ${team.name}`}
                       >
@@ -772,8 +833,8 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
         open={!!kickCandidate}
         onClose={() => setKickCandidate(null)}
         size="sm"
-        title="Remove this team?"
-        description="The team is removed from this auction and its owner loses their bid button."
+        title={kickTeam ? `Remove ${kickTeam.name}?` : 'Remove this team?'}
+        description="The owner is sent out of the room and their phone loses its bid paddle."
         footer={
           <>
             <Button variant="ghost" onClick={() => setKickCandidate(null)}>
@@ -791,10 +852,16 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
           </>
         }
       >
-        <p className="text-sm text-ink-2">The owner can register again as a new team.</p>
+        <p className="text-sm text-ink-2">
+          {kickTeam && kickTeam.playersBought.length > 0
+            ? `Their ${kickTeam.playersBought.length} player${kickTeam.playersBought.length === 1 ? '' : 's'} go back to the pool as unsold${settings.reauctionUnsold ? ' and come up again in the accelerated round' : ''}. `
+            : ''}
+          {kickTeam && kickTeam.id === currentHighestBidderTeamId ? 'Their bid on this player is withdrawn. ' : ''}
+          {inLobby ? 'They can register again as a new team while the lobby is open.' : 'Registration is closed, so they cannot rejoin as a team.'}
+        </p>
       </Modal>
 
-      <Toast message={lastError} className={canControl ? 'bottom-44' : 'bottom-28'} />
+      <Toast message={lastError} className={canControl ? 'bottom-36 sm:bottom-28' : 'bottom-28'} />
     </div>
   );
 };

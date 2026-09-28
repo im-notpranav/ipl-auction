@@ -4,15 +4,18 @@ import { Timer } from 'lucide-react';
 import { AuctionSettings } from '../../types';
 import { Button, ChoiceGroup, Switch } from '../ui';
 
-export type TimerPatch = Partial<Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds'>>;
+export type TimerPatch = Partial<Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds'>>;
 
 interface TimerSettingsProps {
-  settings: Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds'>;
+  settings: Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds'>;
   onChange: (patch: TimerPatch) => void;
+  // 'up' from the bottom control bar, 'down' from the top strip on phones.
+  placement?: 'up' | 'down';
 }
 
-// Compact popover in the auctioneer bar: lot timer length and auto-advance, changeable mid-auction.
-export function TimerSettings({ settings, onChange }: TimerSettingsProps) {
+// Compact popover in the auctioneer bar: auto-advance and its pause, changeable mid-auction.
+export function TimerSettings({ settings, onChange, placement = 'up' }: TimerSettingsProps) {
+  const down = placement === 'down';
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -32,30 +35,26 @@ export function TimerSettings({ settings, onChange }: TimerSettingsProps) {
     };
   }, [open]);
 
-  const summary = `${settings.bidTimerSeconds > 0 ? `${settings.bidTimerSeconds}s` : 'No timer'}${settings.autoAdvance ? ' · Auto' : ''}`;
+  const summary = settings.autoAdvance ? `Auto next · ${settings.autoAdvanceDelaySeconds}s` : 'Manual next';
 
   return (
     <div ref={ref} className="relative">
-      <Button size="md" icon={<Timer className="h-4 w-4" />} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog" title="Timer settings">
+      <Button size={down ? 'sm' : 'md'} icon={<Timer className="h-4 w-4" />} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog" title="Next player settings">
         {summary}
       </Button>
       <AnimatePresence>
         {open && (
           <motion.div
             role="dialog"
-            aria-label="Timer settings"
-            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+            aria-label="Next player settings"
+            initial={{ opacity: 0, y: down ? -8 : 8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            exit={{ opacity: 0, y: down ? -6 : 6, scale: 0.98 }}
             transition={{ duration: 0.16 }}
-            className="absolute bottom-full right-0 z-50 mb-2 w-80 origin-bottom-right space-y-4 rounded-2xl border border-line-strong bg-pitch p-4 shadow-2xl"
+            className={`absolute right-0 z-50 w-[min(20rem,calc(100vw-2rem))] space-y-4 rounded-2xl border border-line-strong bg-pitch p-4 shadow-2xl ${
+              down ? 'top-full mt-2 origin-top-right' : 'bottom-full mb-2 origin-bottom-right'
+            }`}
           >
-            <ChoiceGroup
-              label="Lot timer (resets on every bid)"
-              value={settings.bidTimerSeconds}
-              options={[0, 10, 15, 20, 30].map((v) => ({ value: v, label: v === 0 ? 'Off' : `${v}s` }))}
-              onChange={(v) => onChange({ bidTimerSeconds: v })}
-            />
             <Switch
               label="Auto-advance"
               hint="Bring up the next player after each sale"

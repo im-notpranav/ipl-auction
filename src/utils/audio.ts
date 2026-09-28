@@ -345,31 +345,14 @@ class SoundManager {
     this.tone(t + 0.22, hz(51), 0.7, { wave: 'triangle', gain: 0.2, lowpass: 800, reverb: 0.3 });
   }
 
-  /** Clock tick for the last seconds of a lot. Brighter and louder as it nears 1. */
-  playTick(secondsLeft: number) {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const t = ctx.currentTime + 0.005;
-    const urgency = Math.min(1, Math.max(0, (6 - secondsLeft) / 5)); // 0 at 6s+, 1 at 1s
-    // Wooden tick: short filtered click plus a tuned body that rises with urgency.
-    this.burst(t, 0.02, { freq: 2600 + urgency * 1800, q: 6, gain: 0.12 + urgency * 0.14, reverb: 0.05 });
-    this.tone(t, hz(81 + Math.round(urgency * 7)), 0.06, { wave: 'triangle', gain: 0.05 + urgency * 0.08, attack: 0.002, reverb: 0.05 });
-    if (secondsLeft <= 1) this.tone(t, hz(93), 0.12, { gain: 0.06, attack: 0.002, reverb: 0.2 });
-  }
-
-  /** Auctioneer's call: "going once" (stage 1) / "going twice" (stage 2). */
-  playGoing(stage: 1 | 2) {
+  /** Bidding opens on the player on stage: a quick rising two-tone chime. */
+  playBiddingOpen() {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime + 0.01;
-    // A falling two-tone chime, a step higher and a touch louder for "twice".
-    const root = stage === 2 ? 79 : 76;
-    const gain = stage === 2 ? 0.2 : 0.16;
-    this.tone(t, hz(root), 0.28, { wave: 'triangle', gain, attack: 0.004, reverb: 0.3 });
-    this.tone(t, hz(root + 12), 0.2, { gain: gain * 0.3, attack: 0.003, reverb: 0.3 });
-    this.tone(t + 0.16, hz(root - 5), 0.5, { wave: 'triangle', gain: gain * 0.9, attack: 0.004, reverb: 0.35 });
-    // Soft wood knock underneath, a preview of the gavel.
-    this.burst(t, 0.03, { freq: 1500, q: 3, gain: 0.12 + stage * 0.04, reverb: 0.15 });
+    this.tone(t, hz(72), 0.22, { wave: 'triangle', gain: 0.16, attack: 0.004, reverb: 0.3 });
+    this.tone(t + 0.12, hz(79), 0.45, { wave: 'triangle', gain: 0.18, attack: 0.004, reverb: 0.35 });
+    this.tone(t + 0.12, hz(91), 0.3, { gain: 0.05, attack: 0.003, reverb: 0.3 });
   }
 
   /** Personal cue on the buyer's phone: warmer and more intimate than the stadium sold cue. */

@@ -78,7 +78,7 @@ function careerLine(p: Player): Array<{ value: string; label: string }> {
 const STEPS = [
   { icon: Tv, title: 'Put it on the big screen', body: 'Create a room on the laptop driving the TV or projector. It becomes the auction stage.' },
   { icon: Smartphone, title: 'Every team joins by phone', body: 'Owners scan the QR code, pick a franchise and get a bid paddle with their live purse.' },
-  { icon: Gavel, title: 'Bid, sell, build the XI', body: 'The clock calls going once, going twice. Squads, ratings and XIs are ready when it ends.' },
+  { icon: Gavel, title: 'Bid, sell, build the XI', body: 'The auctioneer opens every lot and brings the hammer down. Squads, ratings and XIs are ready when it ends.' },
 ];
 
 function Reveal({ children, delay = 0, className, as = 'div' }: { children: React.ReactNode; delay?: number; className?: string; as?: 'div' | 'li' }) {

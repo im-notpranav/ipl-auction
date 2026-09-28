@@ -174,7 +174,6 @@ async function runAsyncTests() {
       incrementTiers: [],
       categoriesOrder: [...engine.DEFAULT_CATEGORIES],
       isPublic: true,
-      bidTimerSeconds: 0,
       autoAdvance: false,
       autoAdvanceDelaySeconds: 5,
       reauctionUnsold: false,
@@ -209,11 +208,13 @@ async function runAsyncTests() {
     eventSequenceNumber: 50,
     createdAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),
-    bidEndsAt: null,
+    bidLockedUntil: null,
     pausedRemainingMs: null,
     nextPlayerAt: null,
     serverTime: new Date().toISOString(),
     round: 'MAIN',
+    lotLoadedBy: [],
+    kickedParticipantIds: [],
     playingXIs: {},
   };
 
@@ -261,79 +262,110 @@ async function runAsyncTests() {
   console.log(`✓ 13. Immutable Completed Auctions: Completed auction is locked from further mutations while remaining accessible for report generation.`);
 
   runEngineAndXITests(mockRoomState);
-  console.log('\nAll 16 Comprehensive Verification Tests PASSED successfully!');
+  console.log('\nAll 17 Comprehensive Verification Tests PASSED successfully!');
 }
 
-// 14-16. Auction clock, undo and Playing XI rules.
+// 14-16. Lot flow, bid lock, undo, removing a team and Playing XI rules.
 function runEngineAndXITests(template: AuctionRoomState) {
   const t0 = Date.parse('2026-01-01T12:00:00Z');
-  const freshRoom = (overrides: Partial<AuctionRoomState['settings']> = {}): AuctionRoomState => {
-    const team: Team = {
-      id: 'team-a', name: 'Alpha', shortName: 'ALP', ownerParticipantId: 'owner-a',
-      startingPurse: 100, remainingPurse: 100, squadSize: 0, overseasCount: 0, playersBought: [],
-    };
-    return {
-      ...template,
-      id: 'engine-room',
-      status: 'LOBBY',
-      completedAt: undefined,
-      settings: { ...template.settings, bidTimerSeconds: 20, autoAdvance: true, autoAdvanceDelaySeconds: 5, reauctionUnsold: true, ...overrides },
-      teams: { [team.id]: team },
-      currentAuctionIndex: 0,
-      currentPlayer: null,
-      currentBid: 0,
-      currentHighestBidderTeamId: null,
-      currentBidVersion: 0,
-      recentBids: [],
-      auctionedPlayerIds: [],
-      soldPlayers: {},
-      unsoldPlayerIds: [],
-      playingXIs: {},
-      round: 'MAIN',
-      bidEndsAt: null,
-      nextPlayerAt: null,
-      pausedRemainingMs: null,
-    };
-  };
+  const now = new Date(t0).toISOString();
+  const makeTeam = (id: string, owner: string): Team => ({
+    id, name: id.toUpperCase(), shortName: id.slice(-3).toUpperCase(), ownerParticipantId: owner,
+    startingPurse: 100, remainingPurse: 100, squadSize: 0, overseasCount: 0, playersBought: [],
+  });
+  const owner = (id: string, teamId: string) => ({
+    id, displayName: id, role: 'PARTICIPANT' as const, teamId, connected: true, joinedAt: now, lastActiveAt: now,
+  });
+  const freshRoom = (overrides: Partial<AuctionRoomState['settings']> = {}): AuctionRoomState => ({
+    ...template,
+    id: 'engine-room',
+    status: 'LOBBY',
+    completedAt: undefined,
+    settings: { ...template.settings, autoAdvance: true, autoAdvanceDelaySeconds: 5, reauctionUnsold: true, ...overrides },
+    participants: { 'owner-a': owner('owner-a', 'team-a'), 'owner-b': owner('owner-b', 'team-b') },
+    teams: { 'team-a': makeTeam('team-a', 'owner-a'), 'team-b': makeTeam('team-b', 'owner-b') },
+    currentAuctionIndex: 0,
+    currentPlayer: null,
+    currentBid: 0,
+    currentHighestBidderTeamId: null,
+    currentBidVersion: 0,
+    recentBids: [],
+    auctionedPlayerIds: [],
+    soldPlayers: {},
+    unsoldPlayerIds: [],
+    playingXIs: {},
+    round: 'MAIN',
+    bidLockedUntil: null,
+    nextPlayerAt: null,
+    pausedRemainingMs: null,
+    lotLoadedBy: [],
+    kickedParticipantIds: [],
+  });
   const fixed = () => 0; // deterministic player pick
+  // What server.ts does for an accepted bid.
+  const bid = (room: AuctionRoomState, teamId: string, amount: number, at: number) => {
+    const team = room.teams[teamId];
+    room.recentBids.unshift({
+      id: `bid-${room.currentBidVersion}`, bidVersion: room.currentBidVersion + 1, roomId: room.id, playerId: room.currentPlayer!.id,
+      teamId, teamName: team.name, teamShortName: team.shortName, bidderParticipantId: team.ownerParticipantId, bidderDisplayName: team.ownerParticipantId,
+      amount, timestamp: new Date(at).toISOString(),
+    });
+    room.currentBid = amount;
+    room.currentHighestBidderTeamId = teamId;
+    room.currentBidVersion++;
+    engine.lockBidding(room, at);
+  };
 
-  // 14. Clock: lot opens with a timer, expiry sells to the leader, auto-advance follows.
+  // 14. Lot flow: a new player waits locked until the auctioneer opens bidding; every bid
+  //     locks bidding for 2.5s; there is no clock, so a lot only closes when it is called.
   {
     const room = freshRoom();
     assert(engine.startAuction(room, t0, fixed), 'Auction must start from LOBBY.');
+    assert.strictEqual(room.status, 'PLAYER_PRESENTED', 'A new player must come up with bidding locked.');
+    assert.strictEqual(engine.nextDeadline(room), null, 'No clock may run on a lot.');
+    assert(!engine.sellCurrent(room, t0), 'Nothing can be sold before bidding opens.');
+
+    assert(engine.markLotLoaded(room, 'owner-a', room.currentPlayer!.id), 'An owner phone reports the player loaded.');
+    assert(!engine.markLotLoaded(room, 'owner-a', room.currentPlayer!.id), 'A second report changes nothing.');
+    assert(!engine.markLotLoaded(room, 'owner-b', 'some-other-player'), 'A report for another player is ignored.');
+    assert.deepStrictEqual(room.lotLoadedBy, ['owner-a']);
+
+    assert(engine.openBidding(room), 'The auctioneer opens bidding.');
     assert.strictEqual(room.status, 'BIDDING');
-    assert.strictEqual(Date.parse(room.bidEndsAt!), t0 + 20_000, 'Lot must open with a 20s clock.');
-    // A bid at 15s resets the clock to a full 20s.
-    room.currentHighestBidderTeamId = 'team-a';
-    engine.recordBidOnClock(room, t0 + 15_000);
-    assert.strictEqual(Date.parse(room.bidEndsAt!), t0 + 35_000, 'Each bid must restart the clock.');
-    assert(!engine.tick(room, t0 + 34_000, fixed), 'Nothing happens before the deadline.');
+    assert(!engine.openBidding(room), 'Bidding opens once.');
+
+    bid(room, 'team-a', room.currentPlayer!.basePrice, t0 + 1_000);
+    assert.strictEqual(engine.bidLockRemaining(room, t0 + 1_000), 2_500, 'A bid locks bidding for 2.5s.');
+    assert.strictEqual(engine.bidLockRemaining(room, t0 + 2_500), 1_000);
+    assert.strictEqual(engine.bidLockRemaining(room, t0 + 3_500), 0, 'Bidding reopens after the lock.');
+    assert(!engine.tick(room, t0 + 3_600_000, fixed), 'A lot never closes by itself.');
+
     const player = room.currentPlayer!;
-    assert(engine.tick(room, t0 + 35_000, fixed), 'Expiry must resolve the lot.');
-    assert.strictEqual(room.status, 'SOLD', 'Expiry with a leader must sell.');
+    assert(engine.sellCurrent(room, t0 + 10_000), 'The auctioneer sells to the leader.');
+    assert.strictEqual(room.status, 'SOLD');
+    assert.strictEqual(room.bidLockedUntil, null, 'Selling clears the bid lock.');
     assert.strictEqual(room.teams['team-a'].remainingPurse, 100 - player.basePrice, 'Purse must drop by the sale price.');
-    assert.strictEqual(Date.parse(room.nextPlayerAt!), t0 + 40_000, 'Auto-advance must be scheduled 5s later.');
-    assert(engine.tick(room, t0 + 40_000, fixed), 'Auto-advance must bring up the next player.');
-    assert.strictEqual(room.status, 'BIDDING');
+    assert.strictEqual(Date.parse(room.nextPlayerAt!), t0 + 15_000, 'Auto-advance must be scheduled 5s later.');
+    assert(engine.tick(room, t0 + 15_000, fixed), 'Auto-advance must bring up the next player.');
+    assert.strictEqual(room.status, 'PLAYER_PRESENTED', 'The next player also waits for the auctioneer.');
     assert.notStrictEqual(room.currentPlayer!.id, player.id, 'A new player must be on stage.');
-    // No bids before expiry: unsold.
-    assert(engine.tick(room, Date.parse(room.bidEndsAt!), fixed));
-    assert.strictEqual(room.status, 'UNSOLD', 'Expiry without bids must mark unsold.');
-    console.log('✓ 14. Auction Clock: lots close on time, sell to the leader or go unsold, and auto-advance.');
+    assert.deepStrictEqual(room.lotLoadedBy, [], 'Loaded reports reset with every lot.');
+    assert(engine.markUnsold(room, t0 + 16_000), 'A player can be passed without opening bidding.');
+    assert.strictEqual(room.status, 'UNSOLD');
+    console.log('✓ 14. Lot Flow: players wait locked until bidding opens, each bid locks paddles for 2.5s, no lot clock.');
   }
 
-  // 15. Pause keeps the time left; undo reverses a sale exactly.
+  // 15. Pause / resume; undo reverses a sale exactly.
   {
     const room = freshRoom();
     engine.startAuction(room, t0, fixed);
+    engine.openBidding(room);
     assert(engine.pause(room, t0 + 12_000));
     assert.strictEqual(room.status, 'PAUSED');
-    assert.strictEqual(room.pausedRemainingMs, 8_000, 'Pause must keep the 8s left.');
     assert(engine.resume(room, t0 + 60_000));
-    assert.strictEqual(Date.parse(room.bidEndsAt!), t0 + 68_000, 'Resume must restore the time left.');
+    assert.strictEqual(room.status, 'BIDDING', 'Resume reopens bidding.');
 
-    room.currentHighestBidderTeamId = 'team-a';
-    room.currentBid = 7.5;
+    bid(room, 'team-a', 7.5, t0 + 61_000);
     const player = room.currentPlayer!;
     assert(engine.sellCurrent(room, t0 + 61_000));
     assert(engine.undoLastSale(room, t0 + 62_000), 'The sale on stage must be undoable.');
@@ -344,7 +376,37 @@ function runEngineAndXITests(template: AuctionRoomState) {
     assert.strictEqual(room.status, 'BIDDING');
     assert.strictEqual(room.currentHighestBidderTeamId, 'team-a', 'Undo must restore the leader.');
     assert.strictEqual(room.nextPlayerAt, null, 'Undo must cancel the auto-advance.');
-    console.log('✓ 15. Pause & Undo: time left survives a pause; undoing a sale refunds and reopens the lot.');
+    console.log('✓ 15. Pause & Undo: pause holds bidding; undoing a sale refunds and reopens the lot.');
+  }
+
+  // 15a. Removing a team: its buys go back to the pool, its bid on the live lot is withdrawn.
+  {
+    const room = freshRoom();
+    engine.startAuction(room, t0, fixed);
+    engine.openBidding(room);
+    bid(room, 'team-a', 3, t0 + 1_000);
+    const bought = room.currentPlayer!;
+    engine.sellCurrent(room, t0 + 5_000);
+    engine.advance(room, t0 + 6_000, fixed);
+    engine.markLotLoaded(room, 'owner-a', room.currentPlayer!.id);
+    engine.openBidding(room);
+    const base = room.currentPlayer!.basePrice;
+    bid(room, 'team-b', base, t0 + 7_000);
+    bid(room, 'team-a', base + 0.2, t0 + 10_000);
+
+    assert(!engine.removeParticipant(room, room.auctioneerId, t0 + 11_000), 'The auctioneer cannot be removed.');
+    const version = room.currentBidVersion;
+    assert(engine.removeParticipant(room, 'owner-a', t0 + 11_000), 'A team owner can be removed.');
+    assert(!room.teams['team-a'] && !room.participants['owner-a'], 'The team and its owner must be gone.');
+    assert(room.kickedParticipantIds.includes('owner-a'), 'The removed owner is remembered.');
+    assert(!room.soldPlayers[bought.id] && room.unsoldPlayerIds.includes(bought.id), 'Their buys go back to the pool as unsold.');
+    assert.strictEqual(room.currentHighestBidderTeamId, 'team-b', 'The lead falls back to the best remaining bid.');
+    assert.strictEqual(room.currentBid, base, 'The price falls back with it.');
+    assert(room.currentBidVersion > version, 'Screens must see the price change.');
+    assert(room.recentBids.every((b) => b.teamId !== 'team-a'), 'Their bids on the lot are withdrawn.');
+    assert.deepStrictEqual(room.lotLoadedBy, [], 'They drop off the loaded list.');
+    assert(!engine.removeParticipant(room, 'owner-a', t0 + 12_000), 'Removing twice changes nothing.');
+    console.log('✓ 15a. Remove Team: buys return to the pool, the live bid falls back to the next team, the owner is barred.');
   }
 
   // 15b. Running order: marquee set, then Batters / WK / All-rounders / Bowlers sets in rotation.

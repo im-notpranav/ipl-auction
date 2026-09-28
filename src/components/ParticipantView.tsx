@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Users, MessageSquare, Send, CheckCircle2, Globe, Hourglass, Gavel, ChevronRight, Star, Zap } from 'lucide-react';
+import { Users, MessageSquare, Send, CheckCircle2, Globe, Hourglass, Gavel, ChevronRight, Star, Zap, Lock } from 'lucide-react';
 import { AuctionRoomState, ChatMessage, PlayerRole, Team } from '../types';
-import { formatCategory, formatLotSet, formatPrice, formatRole, calculateNextLegalBid, bidOptions } from '../utils/format';
+import { formatCategory, formatLotSet, formatPrice, formatRole, calculateNextLegalBid, bidOptions, BID_LOCK_MS } from '../utils/format';
 
 const stepLabel = (step: number) => (step < 1 ? `+₹${Math.round(step * 100)} L` : `+₹${step} Cr`);
 import { Button, CountUp, Drawer, EmptyState, Notice, PlayerPhoto, Price, RatingRing, TeamLogo, TeamTag, Toast } from './ui';
 import { PlayerStats } from './PlayerStats';
 import { getPlayerRating } from '../services/playerRatings';
-import { ClockBar, useLotClock } from './live/BidClock';
+import { useCountdown } from '../hooks/useCountdown';
 import { NextPlayerBeat } from './live/NextPlayerBeat';
 import { BuyCelebration } from './live/BuyCelebration';
 import { SaleFeed, SaleFeedItem } from './live/SaleFeed';
@@ -21,6 +21,7 @@ interface ParticipantViewProps {
   lastError: string | null;
   serverOffsetMs: number;
   onPlaceBid: (amount?: number) => void;
+  onLotLoaded: (playerId: string) => void;
   onSendChat: (text: string) => void;
 }
 
@@ -40,7 +41,7 @@ function roleCounts(team: Team) {
   return counts;
 }
 
-export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, participantId, chatMessages, lastError, serverOffsetMs, onPlaceBid, onSendChat }) => {
+export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, participantId, chatMessages, lastError, serverOffsetMs, onPlaceBid, onLotLoaded, onSendChat }) => {
   const {
     status,
     currentPlayer,
@@ -68,14 +69,33 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
   const [outbidAt, setOutbidAt] = useState<number | null>(null);
   const wishlist = useWishlist(roomState.id);
 
-  const clockInput = {
-    status,
-    bidEndsAt: roomState.bidEndsAt ?? null,
-    pausedRemainingMs: roomState.pausedRemainingMs ?? null,
-    bidTimerSeconds: settings.bidTimerSeconds ?? 0,
-    serverOffsetMs,
-  };
-  const clock = useLotClock(clockInput);
+  // Every bid locks the paddles for a moment; this is the time left on that lock.
+  const lock = useCountdown(status === 'BIDDING' ? roomState.bidLockedUntil : null, serverOffsetMs);
+  const locked = !!lock && lock.msLeft > 0;
+  const presented = status === 'PLAYER_PRESENTED';
+  const loadedHere = roomState.lotLoadedBy?.includes(participantId) ?? false;
+
+  // Tell the auctioneer this phone has the new player loaded. Re-sent with each room
+  // update until the server records it, so a message dropped during a reconnect is retried.
+  useEffect(() => {
+    if (!presented || !currentPlayer || !myTeam || loadedHere) return;
+    const playerId = currentPlayer.id;
+    let active = true;
+    const img = new Image();
+    const report = () => {
+      if (active) onLotLoaded(playerId);
+      active = false;
+    };
+    img.onload = report;
+    img.onerror = report;
+    img.src = currentPlayer.imageUrl;
+    if (img.complete) report();
+    return () => {
+      active = false;
+      img.onload = img.onerror = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presented, currentPlayer?.id, myTeam?.id, loadedHere, roomState.eventSequenceNumber, onLotLoaded]);
 
   useEffect(() => {
     if (showChat) setSeenMessages(chatMessages.length);
@@ -94,6 +114,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
   // Why the bid button is off, in plain words (null = you can bid).
   let blockedReason: string | null = null;
   if (status === 'PAUSED') blockedReason = 'Auction paused';
+  else if (presented) blockedReason = 'Waiting for the auctioneer';
   else if (status !== 'BIDDING' || !currentPlayer) blockedReason = 'Bidding opens with the next player';
   else if (!myTeam) blockedReason = 'Register a team to bid';
   else if (isLeading) blockedReason = null;
@@ -165,8 +186,6 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
     setChatInput('');
   };
 
-  const urgent = clock.active && !clock.paused && clock.phase === 'urgent' && status === 'BIDDING';
-
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md flex-col px-4 pb-52 pt-4">
       {myTeam ? (
@@ -175,9 +194,10 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
           <div className="flex items-start justify-between gap-3 pl-1">
             <TeamLogo team={myTeam} size={44} className="mt-0.5" />
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 font-display text-lg font-bold uppercase leading-tight tracking-wide text-ink">{myTeam.name}</p>
+              <p className="truncate font-display text-lg font-bold uppercase leading-tight tracking-wide text-ink">{myTeam.name}</p>
               <p className="text-sm tabular text-ink-3">
-                Squad {myTeam.squadSize}/{settings.maxSquadSize} · Overseas {myTeam.overseasCount}/{settings.maxOverseas}
+                <span className="whitespace-nowrap">Squad {myTeam.squadSize}/{settings.maxSquadSize}</span> ·{' '}
+                <span className="whitespace-nowrap">Overseas {myTeam.overseasCount}/{settings.maxOverseas}</span>
               </p>
             </div>
             <div className="text-right">
@@ -186,7 +206,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                 value={myTeam.remainingPurse}
                 duration={0.9}
                 format={(n) => formatPrice(Math.round(n * 100) / 100)}
-                className="whitespace-nowrap font-display text-2xl font-bold tabular text-ipl-gold"
+                className="whitespace-nowrap font-display text-xl font-bold tabular text-ipl-gold sm:text-2xl"
               />
             </div>
           </div>
@@ -287,7 +307,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
               <p className="relative font-display text-2xl font-bold uppercase text-danger">Unsold</p>
             ) : (
               <div className="relative">
-                <p className="text-sm text-ink-3">{leadingTeam ? 'Current bid' : 'Opening bid'}</p>
+                <p className="text-sm text-ink-3">{leadingTeam ? 'Current bid' : presented ? 'Base price' : 'Opening bid'}</p>
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.p
                     key={currentBidVersion}
@@ -307,11 +327,14 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                     <span className="inline-flex items-center gap-2 text-ink-2">
                       <TeamTag shortName={leadingTeam.shortName} name={leadingTeam.name} color={leadingTeam.color} /> leads
                     </span>
+                  ) : presented ? (
+                    <span className="inline-flex items-center gap-1.5 text-sm text-ink-2">
+                      <Lock className="h-4 w-4 shrink-0 text-ipl-gold" aria-hidden /> Opens when the auctioneer says go
+                    </span>
                   ) : (
                     <span className="text-ink-3">No bids yet. Opens at the base price.</span>
                   )}
                 </p>
-                <ClockBar {...clockInput} bidVersion={currentBidVersion} className="mt-3" />
                 {myTeam && (
                   <p className="mt-2 text-xs text-ink-3">
                     You can go up to <span className="font-semibold tabular text-ink-2">{formatPrice(maxBid)}</span>
@@ -377,15 +400,12 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                 className="relative flex h-16 items-center justify-center gap-2 overflow-hidden rounded-xl border border-live/50 bg-live/10 font-display text-2xl font-bold uppercase tracking-wide text-live"
                 role="status"
               >
-                {clock.active && (
-                  <span className="absolute inset-y-0 left-0 bg-live/15" style={{ width: `${clock.fraction * 100}%`, transition: 'width 120ms linear' }} aria-hidden />
-                )}
-                <CheckCircle2 className="relative h-6 w-6" aria-hidden />
-                <span className="relative">You're leading{clock.active ? ` · ${clock.secondsLeft}s` : ''}</span>
+                <CheckCircle2 className="h-6 w-6" aria-hidden />
+                <span>You're leading</span>
               </motion.div>
             ) : blockedReason ? (
               <motion.div key={`blocked-${blockedReason}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-                <Button size="xl" fullWidth disabled className="text-lg">
+                <Button size="xl" fullWidth disabled className="text-lg" icon={presented ? <Lock className="h-5 w-5" /> : undefined}>
                   {blockedReason}
                 </Button>
               </motion.div>
@@ -398,7 +418,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                         key={step}
                         size="sm"
                         variant="secondary"
-                        disabled={amount > maxBid}
+                        disabled={locked || amount > maxBid}
                         onClick={() => onPlaceBid(amount)}
                         aria-label={`Jump bid ${stepLabel(step)} to ${formatPrice(amount)}`}
                         className="flex h-12 flex-col gap-0 leading-tight"
@@ -409,27 +429,37 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                     ))}
                   </div>
                 )}
-                <div className="relative">
-                {/* Final seconds: a red ring ripples out from the paddle. The button itself stays solid so it never looks disabled. */}
-                {urgent && <span className="pointer-events-none absolute inset-0 rounded-xl border-2 border-danger animate-urgent-ring" aria-hidden />}
+                {/* Locked for a moment after every bid: same size and place as the paddle, so nothing
+                    jumps under the thumb, with a bar that drains until bids reopen. */}
                 <Button
-                  variant="primary"
+                  variant={locked ? 'secondary' : 'primary'}
                   size="xl"
                   fullWidth
-                  icon={<Gavel className="relative h-6 w-6" />}
-                  onClick={() => onPlaceBid()}
-                  className={`relative overflow-hidden ${urgent ? 'ring-2 ring-danger ring-offset-2 ring-offset-night' : ''}`}
+                  aria-disabled={locked}
+                  icon={locked ? <Lock className="relative h-6 w-6" /> : <Gavel className="relative h-6 w-6" />}
+                  onClick={() => !locked && onPlaceBid()}
+                  className={`relative overflow-hidden ${locked ? 'cursor-wait' : ''}`}
                 >
-                  {clock.active && (
-                    <span className="pointer-events-none absolute inset-y-0 left-0 bg-white/20" style={{ width: `${clock.fraction * 100}%`, transition: 'width 120ms linear' }} aria-hidden />
+                  {locked ? (
+                    <>
+                      <span
+                        className="pointer-events-none absolute inset-y-0 left-0 bg-ipl-orange/25"
+                        style={{ width: `${Math.min(1, lock!.msLeft / BID_LOCK_MS) * 100}%`, transition: 'width 100ms linear' }}
+                        aria-hidden
+                      />
+                      <span className="relative">
+                        Locked <span className="tabular">{(Math.ceil(lock!.msLeft / 100) / 10).toFixed(1)}s</span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine bg-gradient-to-r from-transparent via-white/35 to-transparent" aria-hidden />
+                      <span className="relative">
+                        Bid <span className="tabular">{formatPrice(nextBid)}</span>
+                      </span>
+                    </>
                   )}
-                  <span className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine bg-gradient-to-r from-transparent via-white/35 to-transparent" aria-hidden />
-                  <span className="relative">
-                    Bid <span className="tabular">{formatPrice(nextBid)}</span>
-                  </span>
-                  {clock.active && <span className="relative ml-1 rounded-md bg-night/25 px-1.5 text-lg tabular">{clock.secondsLeft}s</span>}
                 </Button>
-                </div>
               </motion.div>
             )}
           </AnimatePresence>

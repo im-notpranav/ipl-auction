@@ -1,34 +1,35 @@
 import { AuctionRoomState, AuctionSet, AuctionSettings, Player, PlayerCategory } from '../types';
 import { ALL_PLAYERS, PLAYERS_BY_CATEGORY, PLAYERS_BY_ID } from '../data/players';
+import { BID_LOCK_MS } from '../utils/format';
 
 /*
   Auction state transitions, shared by server.ts and the tests.
 
-  Every function mutates the room it is given and takes `now` (ms) so the clock
-  can be tested without real timers. server.ts owns the setTimeouts: after any
-  change it calls nextDeadline(room) and, when that time comes, tick(room, now).
+  Every function mutates the room it is given and takes `now` (ms) so timing can
+  be tested without real timers. server.ts owns the setTimeouts: after any change
+  it calls nextDeadline(room) and, when that time comes, tick(room, now).
 
-  Clock rules
-   - A lot opens with bidEndsAt = now + timer (when bidTimerSeconds > 0).
-     Every accepted bid resets it to a full timer.
-   - When bidEndsAt passes: sold to the leader, or unsold if nobody bid.
+  Lot rules
+   - A new player comes up as PLAYER_PRESENTED: on every screen, bids refused.
+     Phones report when the player has loaded (lotLoadedBy) and the auctioneer
+     opens bidding with openBidding.
+   - There is no lot clock. The auctioneer calls Sold or Unsold.
+   - Every accepted bid locks bidding for BID_LOCK_MS (bidLockedUntil), so the room
+     sees the new price before anyone can answer it.
    - After SOLD / UNSOLD with autoAdvance on, nextPlayerAt = now + delay.
-   - PAUSE while BIDDING: status PAUSED, the time left goes to pausedRemainingMs.
-     RESUME gives it back (at least RESUME_GRACE_MS so people can react).
+   - PAUSE while BIDDING: status PAUSED until RESUME.
    - PAUSE while SOLD / UNSOLD "holds" the auto-advance: status stays SOLD / UNSOLD
      (so the sold moment stays on screen), nextPlayerAt becomes null and the time
      left goes to pausedRemainingMs. RESUME releases it.
-   - The ACCELERATED round re-offers unsold players once, on half the timer.
+   - The ACCELERATED round re-offers unsold players once.
 */
 
-export const DEFAULT_SETTINGS: Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds' | 'reauctionUnsold'> = {
-  bidTimerSeconds: 20,
+export const DEFAULT_SETTINGS: Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds' | 'reauctionUnsold'> = {
   autoAdvance: true,
   autoAdvanceDelaySeconds: 5,
   reauctionUnsold: true,
 };
 
-const RESUME_GRACE_MS = 5000;
 export const DEFAULT_CATEGORIES: PlayerCategory[] = ['MARQUEE', 'BATSMEN', 'WICKET_KEEPERS', 'ALL_ROUNDERS', 'BOWLERS'];
 // Average players per set; the number of rounds is picked from it (see buildAuctionSets).
 const SET_TARGET_SIZE = 8;
@@ -39,35 +40,26 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 
-export function clampTimer(seconds: unknown): number {
-  const n = Math.round(Number(seconds));
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.min(120, Math.max(5, n));
-}
-
 export function clampDelay(seconds: unknown): number {
   const n = Math.round(Number(seconds));
   if (!Number.isFinite(n)) return DEFAULT_SETTINGS.autoAdvanceDelaySeconds;
   return Math.min(30, Math.max(2, n));
 }
 
-// Seconds per lot for the round in play: the accelerated round runs at half pace.
-export function lotSeconds(room: AuctionRoomState): number {
-  const base = room.settings.bidTimerSeconds || 0;
-  if (base <= 0) return 0;
-  return room.round === 'ACCELERATED' ? Math.max(5, Math.ceil(base / 2)) : base;
-}
-
-// Rooms saved before the clock existed: no timer, no auto-advance (keeps their old behaviour).
+// Fills fields added after a room was saved, and drops the retired lot clock.
 export function normalizeRoom(room: AuctionRoomState): AuctionRoomState {
-  const s = room.settings as Partial<AuctionSettings> & AuctionSettings;
-  if (typeof s.bidTimerSeconds !== 'number') s.bidTimerSeconds = 0;
+  const s = room.settings as AuctionSettings & { bidTimerSeconds?: number };
+  delete s.bidTimerSeconds;
   if (typeof s.autoAdvance !== 'boolean') s.autoAdvance = false;
   if (typeof s.autoAdvanceDelaySeconds !== 'number') s.autoAdvanceDelaySeconds = DEFAULT_SETTINGS.autoAdvanceDelaySeconds;
   if (typeof s.reauctionUnsold !== 'boolean') s.reauctionUnsold = false;
-  if (room.bidEndsAt === undefined) room.bidEndsAt = null;
+  delete (room as AuctionRoomState & { bidEndsAt?: unknown }).bidEndsAt;
+  if (room.status === 'PAUSED') room.pausedRemainingMs = null;
   if (room.pausedRemainingMs === undefined) room.pausedRemainingMs = null;
   if (room.nextPlayerAt === undefined) room.nextPlayerAt = null;
+  if (room.bidLockedUntil === undefined) room.bidLockedUntil = null;
+  if (!room.lotLoadedBy) room.lotLoadedBy = [];
+  if (!room.kickedParticipantIds) room.kickedParticipantIds = [];
   if (!room.round) room.round = 'MAIN';
   if (!room.playingXIs) room.playingXIs = {};
   if (!room.serverTime) room.serverTime = new Date().toISOString();
@@ -148,35 +140,35 @@ export function pickNextPlayer(room: AuctionRoomState, random: () => number = Ma
   return null;
 }
 
-// ─── Clock helpers ──────────────────────────────────────────────────────────
-
-export function armBidClock(room: AuctionRoomState, now: number) {
-  const seconds = lotSeconds(room);
-  room.bidEndsAt = seconds > 0 ? iso(now + seconds * 1000) : null;
-  room.pausedRemainingMs = null;
-}
+// ─── Timing helpers ─────────────────────────────────────────────────────────
 
 function scheduleAdvance(room: AuctionRoomState, now: number) {
-  room.bidEndsAt = null;
+  room.bidLockedUntil = null;
   room.pausedRemainingMs = null;
   room.nextPlayerAt = room.settings.autoAdvance ? iso(now + room.settings.autoAdvanceDelaySeconds * 1000) : null;
 }
 
 export function clearClock(room: AuctionRoomState) {
-  room.bidEndsAt = null;
   room.nextPlayerAt = null;
   room.pausedRemainingMs = null;
+  room.bidLockedUntil = null;
 }
 
 // The next moment the server has to act on this room, or null.
 export function nextDeadline(room: AuctionRoomState): number | null {
-  if (room.status === 'BIDDING' && room.bidEndsAt) return ms(room.bidEndsAt);
   if ((room.status === 'SOLD' || room.status === 'UNSOLD') && room.nextPlayerAt) return ms(room.nextPlayerAt);
   return null;
 }
 
-export function biddingClosed(room: AuctionRoomState, now: number) {
-  return room.status === 'BIDDING' && !!room.bidEndsAt && now >= ms(room.bidEndsAt);
+// Milliseconds until bids are accepted again after the last one (0 = open).
+export function bidLockRemaining(room: AuctionRoomState, now: number): number {
+  const until = ms(room.bidLockedUntil);
+  return Number.isFinite(until) ? Math.max(0, until - now) : 0;
+}
+
+// Called for every accepted bid.
+export function lockBidding(room: AuctionRoomState, now: number) {
+  room.bidLockedUntil = iso(now + BID_LOCK_MS);
 }
 
 // ─── Transitions ────────────────────────────────────────────────────────────
@@ -188,10 +180,12 @@ function completeAuction(room: AuctionRoomState, now: number) {
   room.currentSet = null;
   room.currentHighestBidderTeamId = null;
   room.currentBid = 0;
+  room.lotLoadedBy = [];
   clearClock(room);
 }
 
-// Brings up the next player (or completes the auction). Returns the new player.
+// Brings up the next player (or completes the auction). The lot opens locked:
+// the auctioneer starts the bidding. Returns the new player.
 export function openNextLot(room: AuctionRoomState, now: number, random: () => number = Math.random): Player | null {
   const next = pickNextPlayer(room, random);
   delete room.lastSoldEvent;
@@ -200,16 +194,32 @@ export function openNextLot(room: AuctionRoomState, now: number, random: () => n
     completeAuction(room, now);
     return null;
   }
-  room.status = 'BIDDING';
+  room.status = 'PLAYER_PRESENTED';
   room.currentPlayer = next;
   room.currentBid = next.basePrice;
   room.currentHighestBidderTeamId = null;
   room.currentBidVersion++;
   room.recentBids = [];
   room.currentAuctionIndex++;
-  room.nextPlayerAt = null;
-  armBidClock(room, now);
+  room.lotLoadedBy = [];
+  clearClock(room);
   return next;
+}
+
+export function openBidding(room: AuctionRoomState): boolean {
+  if (room.status !== 'PLAYER_PRESENTED' || !room.currentPlayer) return false;
+  room.status = 'BIDDING';
+  room.bidLockedUntil = null;
+  return true;
+}
+
+// A team owner's phone has the player on stage loaded.
+export function markLotLoaded(room: AuctionRoomState, participantId: string, playerId: unknown): boolean {
+  const participant = room.participants[participantId];
+  if (!participant?.teamId || !room.currentPlayer || room.currentPlayer.id !== playerId) return false;
+  if (room.lotLoadedBy.includes(participantId)) return false;
+  room.lotLoadedBy.push(participantId);
+  return true;
 }
 
 export function sellCurrent(room: AuctionRoomState, now: number): boolean {
@@ -243,8 +253,9 @@ export function sellCurrent(room: AuctionRoomState, now: number): boolean {
   return true;
 }
 
+// Also allowed before bidding opens, to pass on a player nobody wants.
 export function markUnsold(room: AuctionRoomState, now: number, advance = true): boolean {
-  if (room.status !== 'BIDDING' || !room.currentPlayer) return false;
+  if ((room.status !== 'BIDDING' && room.status !== 'PLAYER_PRESENTED') || !room.currentPlayer) return false;
   const player = room.currentPlayer;
   if (!room.unsoldPlayerIds.includes(player.id)) room.unsoldPlayerIds.push(player.id);
   if (!room.auctionedPlayerIds.includes(player.id)) room.auctionedPlayerIds.push(player.id);
@@ -255,15 +266,8 @@ export function markUnsold(room: AuctionRoomState, now: number, advance = true):
   return true;
 }
 
-// The lot's time is up: sold to the leader, otherwise unsold.
-export function expireLot(room: AuctionRoomState, now: number): boolean {
-  if (room.status !== 'BIDDING') return false;
-  return room.currentHighestBidderTeamId ? sellCurrent(room, now) : markUnsold(room, now);
-}
-
-// Acts on whichever deadline has passed. Returns true if the room changed.
+// Acts on the auto-advance once it is due. Returns true if the room changed.
 export function tick(room: AuctionRoomState, now: number, random: () => number = Math.random): boolean {
-  if (biddingClosed(room, now)) return expireLot(room, now);
   if ((room.status === 'SOLD' || room.status === 'UNSOLD') && room.nextPlayerAt && now >= ms(room.nextPlayerAt)) {
     openNextLot(room, now, random);
     return true;
@@ -281,21 +285,16 @@ export function startAuction(room: AuctionRoomState, now: number, random: () => 
 
 // Manual "next player". Skipping a live lot counts as unsold so the player isn't lost.
 export function advance(room: AuctionRoomState, now: number, random: () => number = Math.random): boolean {
-  if (room.status === 'BIDDING') markUnsold(room, now, false);
+  if (room.status === 'BIDDING' || room.status === 'PLAYER_PRESENTED') markUnsold(room, now, false);
   if (room.status !== 'SOLD' && room.status !== 'UNSOLD') return false;
   openNextLot(room, now, random);
   return true;
 }
 
-export function recordBidOnClock(room: AuctionRoomState, now: number) {
-  if (lotSeconds(room) > 0) armBidClock(room, now);
-}
-
 export function pause(room: AuctionRoomState, now: number): boolean {
   if (room.status === 'BIDDING') {
-    room.pausedRemainingMs = room.bidEndsAt ? Math.max(0, ms(room.bidEndsAt) - now) : null;
-    room.bidEndsAt = null;
     room.status = 'PAUSED';
+    room.bidLockedUntil = null;
     return true;
   }
   if ((room.status === 'SOLD' || room.status === 'UNSOLD') && room.nextPlayerAt) {
@@ -309,10 +308,6 @@ export function pause(room: AuctionRoomState, now: number): boolean {
 export function resume(room: AuctionRoomState, now: number): boolean {
   if (room.status === 'PAUSED') {
     room.status = 'BIDDING';
-    if (lotSeconds(room) > 0) {
-      const left = room.pausedRemainingMs ?? lotSeconds(room) * 1000;
-      room.bidEndsAt = iso(now + Math.max(left, RESUME_GRACE_MS));
-    }
     room.pausedRemainingMs = null;
     return true;
   }
@@ -324,40 +319,13 @@ export function resume(room: AuctionRoomState, now: number): boolean {
   return false;
 }
 
-export function extendClock(room: AuctionRoomState, seconds: unknown, now: number): boolean {
-  const add = Math.min(60, Math.max(1, Math.round(Number(seconds) || 0))) * 1000;
-  if (room.status === 'BIDDING' && room.bidEndsAt) {
-    room.bidEndsAt = iso(Math.max(ms(room.bidEndsAt), now) + add);
-    return true;
-  }
-  if (room.pausedRemainingMs !== null && (room.status === 'PAUSED' || room.status === 'SOLD' || room.status === 'UNSOLD')) {
-    room.pausedRemainingMs += add;
-    return true;
-  }
-  if ((room.status === 'SOLD' || room.status === 'UNSOLD') && room.nextPlayerAt) {
-    room.nextPlayerAt = iso(Math.max(ms(room.nextPlayerAt), now) + add);
-    return true;
-  }
-  return false;
-}
-
-export type ClockSettingsPatch = Partial<Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds'>>;
+export type ClockSettingsPatch = Partial<Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds'>>;
 
 export function updateClockSettings(room: AuctionRoomState, patch: ClockSettingsPatch, now: number): boolean {
   if (!patch || typeof patch !== 'object') return false;
   const s = room.settings;
   let changed = false;
 
-  if (patch.bidTimerSeconds !== undefined) {
-    const next = clampTimer(patch.bidTimerSeconds);
-    if (next !== s.bidTimerSeconds) {
-      s.bidTimerSeconds = next;
-      changed = true;
-      // Apply to the lot in play: off clears the clock, on/changed restarts it.
-      if (room.status === 'BIDDING') armBidClock(room, now);
-      if (room.status === 'PAUSED') room.pausedRemainingMs = next > 0 ? lotSeconds(room) * 1000 : null;
-    }
-  }
   if (patch.autoAdvanceDelaySeconds !== undefined) {
     const next = clampDelay(patch.autoAdvanceDelaySeconds);
     if (next !== s.autoAdvanceDelaySeconds) {
@@ -399,8 +367,57 @@ export function undoLastSale(room: AuctionRoomState, now: number): boolean {
   room.status = 'BIDDING';
   room.currentBid = sale.price;
   room.currentHighestBidderTeamId = team ? team.id : null;
-  room.nextPlayerAt = null;
-  armBidClock(room, now);
+  clearClock(room);
+  return true;
+}
+
+// Removes a team owner and their team from the room.
+//  - Players they bought go back to the pool as unsold (re-offered in the accelerated round).
+//  - If they lead the lot in play, the price falls back to the best bid from a team still here.
+//  - If the player on the SOLD screen went to them, that lot becomes unsold.
+// The participant id is remembered so their phone is turned away if it reconnects.
+export function removeParticipant(room: AuctionRoomState, participantId: string, now: number): boolean {
+  const participant = room.participants[participantId];
+  if (!participant || participant.role !== 'PARTICIPANT' || participantId === room.auctioneerId) return false;
+  const team = participant.teamId ? room.teams[participant.teamId] : undefined;
+
+  if (team) {
+    for (const bought of team.playersBought) {
+      delete room.soldPlayers[bought.playerId];
+      if (room.round === 'ACCELERATED') {
+        room.accelerationQueue = [...(room.accelerationQueue ?? []), bought.playerId];
+        room.totalPlayersInPool++;
+      } else if (!room.unsoldPlayerIds.includes(bought.playerId)) {
+        room.unsoldPlayerIds.push(bought.playerId);
+      }
+    }
+
+    if (room.status === 'SOLD' && room.lastSoldEvent?.team.id === team.id) {
+      room.lastUnsoldEvent = { player: room.lastSoldEvent.player, timestamp: iso(now) };
+      delete room.lastSoldEvent;
+      room.status = 'UNSOLD';
+    }
+
+    const player = room.currentPlayer;
+    if (player) {
+      room.recentBids = room.recentBids.filter((b) => !(b.playerId === player.id && b.teamId === team.id));
+      if (room.currentHighestBidderTeamId === team.id) {
+        // recentBids is newest first.
+        const best = room.recentBids.find((b) => b.playerId === player.id && room.teams[b.teamId]);
+        room.currentBid = best ? best.amount : player.basePrice;
+        room.currentHighestBidderTeamId = best ? best.teamId : null;
+        room.currentBidVersion++;
+        room.bidLockedUntil = null;
+      }
+    }
+
+    delete room.playingXIs[team.id];
+    delete room.teams[team.id];
+  }
+
+  delete room.participants[participantId];
+  room.lotLoadedBy = room.lotLoadedBy.filter((id) => id !== participantId);
+  if (!room.kickedParticipantIds.includes(participantId)) room.kickedParticipantIds.push(participantId);
   return true;
 }
 

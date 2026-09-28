@@ -59,6 +59,9 @@ export function calculateNextLegalBid(currentBid: number): number {
 // Jump bids: raise the price by more than the standard step in one go (₹25 L, ₹50 L, ₹1 Cr).
 export const JUMP_BID_STEPS = [0.25, 0.5, 1.0];
 
+// After every accepted bid, bids are refused for this long so the room sees the new price.
+export const BID_LOCK_MS = 2500;
+
 /**
  * Every amount a team may bid right now: the standard next bid first, then each jump
  * that lands above it. Jumps are measured from the current price, so once the standard

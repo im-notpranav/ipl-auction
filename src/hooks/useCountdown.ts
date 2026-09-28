@@ -23,9 +23,15 @@ export function useCountdown(endsAt: string | null | undefined, serverOffsetMs: 
       return;
     }
     // 100ms is smooth enough for rings and bars without burning a phone's battery on rAF.
-    const tick = () => setState(read());
+    // Stops once the deadline passes: a spent deadline can sit in room state for minutes.
+    let id = 0;
+    const tick = () => {
+      const next = read();
+      setState(next);
+      if (next && next.msLeft === 0) window.clearInterval(id);
+    };
+    id = window.setInterval(tick, 100);
     tick();
-    const id = window.setInterval(tick, 100);
     return () => window.clearInterval(id);
     // read() only depends on deadline and offset.
     // eslint-disable-next-line react-hooks/exhaustive-deps

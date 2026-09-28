@@ -94,8 +94,6 @@ export interface AuctionSettings {
   incrementTiers: BidIncrementTier[];
   categoriesOrder: PlayerCategory[];
   isPublic: boolean;
-  // Seconds a lot stays open after the last bid (0 = no timer, auctioneer calls it).
-  bidTimerSeconds: number;
   // After SOLD / UNSOLD, bring up the next player automatically after autoAdvanceDelaySeconds.
   autoAdvance: boolean;
   autoAdvanceDelaySeconds: number;
@@ -231,10 +229,10 @@ export interface AuctionRoomState {
   createdAt: string;
   completedAt?: string;
 
-  // ── Clock (server-authoritative; clients correct skew with serverTime) ──
-  // When the current lot closes. Reset on every bid. Null when no timer is running.
-  bidEndsAt: string | null;
-  // Time left on the lot when the auctioneer paused, restored on resume.
+  // ── Timing (server-authoritative; clients correct skew with serverTime) ──
+  // Bids are refused until this moment: every accepted bid locks bidding briefly.
+  bidLockedUntil: string | null;
+  // Time left on a held auto-advance, restored on resume.
   pausedRemainingMs: number | null;
   // When the next player will come up automatically after SOLD / UNSOLD.
   nextPlayerAt: string | null;
@@ -248,6 +246,11 @@ export interface AuctionRoomState {
   auctionSets?: AuctionSet[];
   // The set the player on stage comes from. Null in the ACCELERATED round.
   currentSet?: AuctionSetRef | null;
+
+  // Team owners whose phones have the player on stage loaded (reset every lot).
+  lotLoadedBy: string[];
+  // Participants the auctioneer removed; their phones are turned away on reconnect.
+  kickedParticipantIds: string[];
 
   // Post-auction Playing XI submissions, by teamId.
   playingXIs: Record<string, PlayingXISelection>;
@@ -332,8 +335,10 @@ export type WSMessageType =
   | 'PING'
   | 'PONG'
   | 'SUBMIT_PLAYING_XI'
-  | 'EXTEND_TIMER' // auctioneer: payload { seconds }
-  | 'UPDATE_SETTINGS' // auctioneer: payload Partial<Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds'>>
+  | 'OPEN_BIDDING' // auctioneer: PLAYER_PRESENTED -> BIDDING
+  | 'LOT_LOADED' // team owner: payload { playerId } once the player on stage has loaded
+  | 'KICKED' // server -> a removed participant's sockets
+  | 'UPDATE_SETTINGS' // auctioneer: payload Partial<Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds'>>
   | 'UNDO_LAST_SALE' // auctioneer: reverse the most recent SOLD (refund purse, return player to pool)
   | 'NOTICE' // server -> one client: payload { message } confirming an action (e.g. XI submitted)
   | 'ERROR';

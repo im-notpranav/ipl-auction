@@ -9,17 +9,17 @@ interface HowItWorksModalProps {
 }
 
 const ROLES = [
-  { icon: Tv, title: 'The big screen', text: 'One laptop on the TV or projector is the auction stage: the player, the live bid, the clock and the leading team.' },
+  { icon: Tv, title: 'The big screen', text: 'One laptop on the TV or projector is the auction stage: the player, the live bid and the leading team.' },
   { icon: Smartphone, title: 'A paddle per team', text: 'Every franchise owner bids from their phone with one tap and always sees their purse, squad and overseas count.' },
-  { icon: Gavel, title: 'The auctioneer', text: 'Starts the auction, can pause, add time, call Sold or Unsold early, and undo a sale made by mistake.' },
+  { icon: Gavel, title: 'The auctioneer', text: 'Opens bidding on each player, calls Sold or Unsold, can pause, remove a team, and undo a sale made by mistake.' },
 ];
 
 // One lot, left to right.
 const LOT_FLOW = [
-  { label: 'Player on the block', detail: 'Opens at the base price' },
-  { label: 'Bids come in', detail: 'Each bid resets the clock' },
-  { label: 'Going once, going twice', detail: 'Final seconds count down' },
-  { label: 'Sold or unsold', detail: 'Highest bid wins when time runs out' },
+  { label: 'Player on the block', detail: 'Paddles locked while every phone loads' },
+  { label: 'Bidding opens', detail: 'The auctioneer says go, at the base price' },
+  { label: 'Bids come in', detail: 'Paddles lock for 2.5s after each bid' },
+  { label: 'Sold or unsold', detail: 'The auctioneer brings the hammer down' },
   { label: 'Next player', detail: 'Comes up by itself after a short pause' },
 ];
 
@@ -81,7 +81,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
             </li>
           ))}
         </ol>
-        <p className="mt-2 text-sm text-ink-3">The clock length and automatic next player are set when the auction is created. With the clock off, the auctioneer calls every lot.</p>
+        <p className="mt-2 text-sm text-ink-3">There is no bid clock: the auctioneer calls every lot. Automatic next player is set when the auction is created and can be changed mid-auction.</p>
       </section>
 
       <section>

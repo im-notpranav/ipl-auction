@@ -4,7 +4,7 @@ import { sounds } from '../utils/audio';
 
 export type ConnectionStatus = 'CONNECTED' | 'RECONNECTING' | 'OFFLINE';
 
-export type ClockSettingsPatch = Partial<Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAdvance' | 'autoAdvanceDelaySeconds'>>;
+export type ClockSettingsPatch = Partial<Pick<AuctionSettings, 'autoAdvance' | 'autoAdvanceDelaySeconds'>>;
 
 const MESSAGE_MS = 4000;
 const OFFSET_SAMPLES = 8;
@@ -16,6 +16,8 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastNotice, setLastNotice] = useState<string | null>(null);
   const [roomNotFound, setRoomNotFound] = useState(false);
+  // The auctioneer removed this participant from the room.
+  const [kicked, setKicked] = useState(false);
   // serverTime - Date.now(); add it to Date.now() to read the server's clock.
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
@@ -107,6 +109,10 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
                   sounds.playBid(newState.recentBids.filter((b) => b.playerId === playerId).length);
                 }
               }
+              if (newState.status === 'BIDDING' && prevStatusRef.current === 'PLAYER_PRESENTED') {
+                sounds.playBiddingOpen();
+                if (myTeamId) navigator.vibrate?.(40);
+              }
               if (newState.status === 'SOLD' && prevStatusRef.current !== 'SOLD') sounds.playSold();
               if (newState.status === 'UNSOLD' && prevStatusRef.current !== 'UNSOLD') sounds.playUnsold();
             }
@@ -117,6 +123,12 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
             prevLeaderRef.current = newState.currentHighestBidderTeamId;
             setRoomNotFound(false);
             setRoomState(newState);
+          } else if (msg.type === 'KICKED') {
+            // Stop here: no reconnect, the server would only turn us away again.
+            socketRef.current = null;
+            ws.close();
+            setConnectionStatus('OFFLINE');
+            setKicked(true);
           } else if (msg.type === 'BID_REJECTED') {
             flashError(msg.payload?.reason || 'Bid rejected');
           } else if (msg.type === 'CHAT_RECEIVED' && msg.payload) {
@@ -154,6 +166,7 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
       setLastError(null);
       setLastNotice(null);
       setRoomNotFound(false);
+      setKicked(false);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
@@ -173,6 +186,7 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
     prevLeaderRef.current = null;
     offsetSamplesRef.current = [];
     setRoomNotFound(false);
+    setKicked(false);
 
     // Immediate REST hydration while WS handshakes
     // The /api/rooms/:roomId endpoint accepts both room ID and room code
@@ -257,6 +271,17 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
     sendAction('START_AUCTION');
   }, [sendAction]);
 
+  const openBidding = useCallback(() => {
+    sendAction('OPEN_BIDDING');
+  }, [sendAction]);
+
+  // Team owner's phone: the player on stage has loaded. Quiet when offline; it is
+  // only a hint for the auctioneer, and the next lot asks again.
+  const reportLotLoaded = useCallback((playerId: string) => {
+    if (socketRef.current?.readyState !== WebSocket.OPEN || !roomId) return;
+    socketRef.current.send(JSON.stringify({ type: 'LOT_LOADED', roomId, participantId, payload: { playerId }, timestamp: new Date().toISOString() }));
+  }, [roomId, participantId]);
+
   const pauseAuction = useCallback(() => {
     sendAction('PAUSE_AUCTION');
   }, [sendAction]);
@@ -289,11 +314,7 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
     sendAction('SEND_CHAT', { text });
   }, [sendAction]);
 
-  // Auctioneer clock controls.
-  const extendTimer = useCallback((seconds: number) => {
-    sendAction('EXTEND_TIMER', { seconds });
-  }, [sendAction]);
-
+  // Auctioneer auto-advance controls.
   const updateSettings = useCallback((patch: ClockSettingsPatch) => {
     sendAction('UPDATE_SETTINGS', patch);
   }, [sendAction]);
@@ -315,9 +336,12 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
     lastError,
     lastNotice,
     roomNotFound,
+    kicked,
     serverOffsetMs,
     placeBid,
     startAuction,
+    openBidding,
+    reportLotLoaded,
     pauseAuction,
     resumeAuction,
     sellPlayer,
@@ -326,7 +350,6 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
     endAuction,
     kickParticipant,
     sendChat,
-    extendTimer,
     updateSettings,
     undoLastSale,
     submitPlayingXI,

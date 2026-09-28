@@ -13,7 +13,6 @@ interface CreateAuctionModalProps {
 
 const PURSE_OPTIONS = [100, 120, 150].map((value) => ({ value, label: `₹${value} Cr` }));
 const SQUAD_OPTIONS = [15, 18, 25].map((value) => ({ value, label: `${value}` }));
-const TIMER_OPTIONS = [0, 10, 15, 20, 30].map((value) => ({ value, label: value === 0 ? 'Off' : `${value}s` }));
 const DELAY_OPTIONS = [3, 5, 8].map((value) => ({ value, label: `${value}s` }));
 
 function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
@@ -35,7 +34,6 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
   const [auctioneerName, setAuctioneerName] = useState('');
   const [startingPurse, setStartingPurse] = useState(120);
   const [maxSquadSize, setMaxSquadSize] = useState(18);
-  const [bidTimerSeconds, setBidTimerSeconds] = useState(20);
   const [autoAdvance, setAutoAdvance] = useState(true);
   const [autoAdvanceDelaySeconds, setAutoAdvanceDelaySeconds] = useState(5);
   const [reauctionUnsold, setReauctionUnsold] = useState(true);
@@ -71,7 +69,6 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
           maxSquadSize,
           maxOverseas: 8,
           isPublic,
-          bidTimerSeconds,
           autoAdvance,
           autoAdvanceDelaySeconds,
           reauctionUnsold,
@@ -83,11 +80,6 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
       setSubmitting(false);
     }
   };
-
-  const timerHint =
-    bidTimerSeconds === 0
-      ? 'No clock. A lot stays open until you call Sold or Unsold.'
-      : `Each bid resets a ${bidTimerSeconds}s clock. When it runs out the lot is sold to the highest bidder, or goes unsold.`;
 
   return (
     <Modal
@@ -146,7 +138,10 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
         </Section>
 
         <Section icon={<Timer className="h-4 w-4" />} title="Bidding">
-          <ChoiceGroup label="Bid timer" value={bidTimerSeconds} options={TIMER_OPTIONS} onChange={setBidTimerSeconds} hint={timerHint} />
+          <p className="text-sm text-ink-2">
+            Each new player waits on screen until you open bidding. There is no clock: you call Sold or Unsold, and every bid locks the paddles for 2.5s so the room
+            sees the new price.
+          </p>
           <Switch
             label="Bring up the next player automatically"
             hint={autoAdvance ? `After Sold or Unsold, the next lot opens after ${autoAdvanceDelaySeconds}s.` : 'You press Next player after every lot.'}
@@ -203,7 +198,7 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
 
         <p className="rounded-xl bg-pitch-2/70 px-4 py-3 text-sm text-ink-2">
           <span className="font-semibold text-ink">Summary:</span> ₹{startingPurse} Cr purses, {maxSquadSize}-player squads,{' '}
-          {bidTimerSeconds === 0 ? 'no bid timer' : `${bidTimerSeconds}s bid timer`}, {autoAdvance ? 'automatic' : 'manual'} next player
+          {autoAdvance ? 'automatic' : 'manual'} next player
           {reauctionUnsold ? ', unsold players re-auctioned' : ''}, {isPublic ? 'public' : 'private'} room.
         </p>
       </form>

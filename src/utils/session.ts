@@ -48,6 +48,18 @@ export function saveSession(roomId: string, session: StoredSession) {
   }
 }
 
+// Forget this browser's identity in a room (e.g. the auctioneer removed the team).
+export function removeSession(roomId: string) {
+  try {
+    const all = readAll();
+    delete all[roomId];
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(all));
+    if (localStorage.getItem(LAST_ROOM_KEY) === roomId) localStorage.removeItem(LAST_ROOM_KEY);
+  } catch {
+    // Storage unavailable: nothing was saved.
+  }
+}
+
 export function getLastRoomId(): string | null {
   try {
     readAll();

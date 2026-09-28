@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MotionConfig, motion } from 'motion/react';
-import { Loader2, SearchX } from 'lucide-react';
+import { Loader2, SearchX, UserX } from 'lucide-react';
 import { Button } from './components/ui';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
@@ -13,7 +13,7 @@ import { CreateAuctionModal } from './components/CreateAuctionModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { useAuctionSocket } from './hooks/useAuctionSocket';
 import { UserRole } from './types';
-import { getSession, saveSession as storeSession, getLastRoomId } from './utils/session';
+import { getSession, saveSession as storeSession, getLastRoomId, removeSession } from './utils/session';
 
 export default function App() {
   // Navigation & Session State
@@ -132,6 +132,8 @@ export default function App() {
     lastError,
     placeBid,
     startAuction,
+    openBidding,
+    reportLotLoaded,
     pauseAuction,
     resumeAuction,
     sellPlayer,
@@ -142,12 +144,18 @@ export default function App() {
     sendChat,
     lastNotice,
     roomNotFound,
+    kicked,
     serverOffsetMs,
-    extendTimer,
     updateSettings,
     undoLastSale,
     submitPlayingXI,
   } = useAuctionSocket(activeRoomId, participantId);
+
+  // Removed by the auctioneer: forget this room's identity so the join link offers
+  // registration again instead of reconnecting as the removed team.
+  useEffect(() => {
+    if (kicked && activeRoomId) removeSession(activeRoomId);
+  }, [kicked, activeRoomId]);
 
   // Handle Auction creation (creates a brand new independent auction every time)
   // POSTs JSON and returns the body, throwing a readable message on any failure
@@ -272,6 +280,20 @@ export default function App() {
       )];
     }
 
+    if (kicked) {
+      return ['kicked', (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center" role="alert">
+          <UserX className="h-12 w-12 text-danger" aria-hidden />
+          <p className="font-display text-3xl font-extrabold uppercase italic tracking-wide text-ink">You were removed</p>
+          <p className="max-w-md text-ink-2">
+            The auctioneer removed your team from {roomState?.name ? <span className="font-semibold text-ink">{roomState.name}</span> : 'this auction'}. Your bid
+            paddle is closed on this phone.
+          </p>
+          <Button variant="primary" onClick={handleReturnHome}>Back to home</Button>
+        </div>
+      )];
+    }
+
     // If an activeRoomId is requested but roomState has not loaded yet:
     if (!roomState) {
       return ['loading', (
@@ -306,6 +328,7 @@ export default function App() {
           canControl={!!participantId && participantId === roomState.auctioneerId}
           lastError={lastError}
           onStartAuction={startAuction}
+          onOpenBidding={openBidding}
           onPauseAuction={pauseAuction}
           onResumeAuction={resumeAuction}
           onSellPlayer={sellPlayer}
@@ -314,7 +337,6 @@ export default function App() {
           onEndAuction={endAuction}
           onKickParticipant={kickParticipant}
           serverOffsetMs={serverOffsetMs}
-          onExtendTimer={extendTimer}
           onUpdateSettings={updateSettings}
           onUndoLastSale={undoLastSale}
         />
@@ -324,6 +346,7 @@ export default function App() {
     // If in lobby / registration (only if auction hasn't started)
     if (
       (roomState.status === 'LOBBY' || roomState.status === 'READY' || activeView === 'lobby') &&
+      roomState.status !== 'PLAYER_PRESENTED' &&
       roomState.status !== 'BIDDING' &&
       roomState.status !== 'PAUSED' &&
       roomState.status !== 'SOLD' &&
@@ -348,6 +371,7 @@ export default function App() {
         chatMessages={chatMessages}
         lastError={lastError}
         onPlaceBid={placeBid}
+        onLotLoaded={reportLotLoaded}
         onSendChat={sendChat}
         serverOffsetMs={serverOffsetMs}
       />
