@@ -244,9 +244,23 @@ export interface AuctionRoomState {
   round: 'MAIN' | 'ACCELERATED';
   // Unsold players still to be re-offered in the ACCELERATED round, in order.
   accelerationQueue?: string[];
+  // MAIN round running order, drawn when the auction starts (see buildAuctionSets).
+  auctionSets?: AuctionSet[];
+  // The set the player on stage comes from. Null in the ACCELERATED round.
+  currentSet?: AuctionSetRef | null;
 
   // Post-auction Playing XI submissions, by teamId.
   playingXIs: Record<string, PlayingXISelection>;
+}
+
+// "Batters, set 2": sets are numbered per category.
+export interface AuctionSetRef {
+  category: PlayerCategory;
+  number: number;
+}
+
+export interface AuctionSet extends AuctionSetRef {
+  playerIds: string[]; // already shuffled, in auction order
 }
 
 export interface PlayingXISelection {

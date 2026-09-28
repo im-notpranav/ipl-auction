@@ -12,7 +12,7 @@ interface LotWipeProps {
   playerId: string | null;
   lot: number;
   total: number;
-  round: string;
+  round: string; // full heading, e.g. "Batters · Set 2"
 }
 
 const BANDS = ['bg-ipl-orange', 'bg-ipl-gold', 'bg-ipl-navy'];
@@ -50,7 +50,7 @@ export function LotWipe({ playerId, lot, total, round }: LotWipeProps) {
             <motion.div key={color} custom={i} variants={band} className={`absolute -inset-y-1/4 -left-[20%] w-[140%] -skew-x-[18deg] ${color}`} />
           ))}
           <motion.div variants={card} className="absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
-            <p className="font-display text-2xl font-bold uppercase tracking-[0.4em] text-ipl-gold">{round} round</p>
+            <p className="font-display text-2xl font-bold uppercase tracking-[0.4em] text-ipl-gold">{round}</p>
             <p className="mt-2 font-display text-8xl font-extrabold uppercase italic leading-none text-ink sm:text-[10rem]">Lot {lot}</p>
             <p className="font-display text-2xl font-semibold uppercase tracking-[0.3em] text-ink-2">of {total}</p>
           </motion.div>

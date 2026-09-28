@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react';
 import { Users, MessageSquare, Send, CheckCircle2, Globe, Hourglass, Gavel, ChevronRight, Star, Zap } from 'lucide-react';
 import { AuctionRoomState, ChatMessage, PlayerRole, Team } from '../types';
-import { formatCategory, formatPrice, formatRole, calculateNextLegalBid, bidOptions } from '../utils/format';
+import { formatCategory, formatLotSet, formatPrice, formatRole, calculateNextLegalBid, bidOptions } from '../utils/format';
 
 const stepLabel = (step: number) => (step < 1 ? `+₹${Math.round(step * 100)} L` : `+₹${step} Cr`);
 import { Button, CountUp, Drawer, EmptyState, Notice, PlayerPhoto, Price, RatingRing, TeamLogo, TeamTag, Toast } from './ui';
@@ -250,7 +250,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                 <PlayerPhoto player={currentPlayer} eager className="h-full w-full object-contain object-bottom" />
               </div>
               <p className="mt-3 flex items-center gap-2 font-display text-sm font-semibold uppercase tracking-widest text-ipl-orange">
-                Lot {roomState.currentAuctionIndex} · {formatCategory(currentPlayer.category)}
+                Lot {roomState.currentAuctionIndex} · {roomState.currentSet ? formatLotSet(currentPlayer.category, roomState.currentSet) : formatCategory(currentPlayer.category)}
                 {roomState.round === 'ACCELERATED' && (
                   <span className="inline-flex items-center gap-1 rounded bg-ipl-gold px-1.5 text-night">
                     <Zap className="h-3 w-3" aria-hidden /> Accelerated

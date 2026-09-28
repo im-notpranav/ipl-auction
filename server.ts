@@ -28,6 +28,7 @@ import {
 import { ALL_PLAYERS, PLAYERS_BY_CATEGORY, PLAYERS_BY_ID } from './src/data/players';
 import { calculateNextLegalBid, isLegalBidAmount } from './src/utils/format';
 import {
+  DEFAULT_CATEGORIES,
   DEFAULT_SETTINGS,
   advance,
   biddingClosed,
@@ -326,7 +327,7 @@ app.post('/api/rooms', async (req, res) => {
       { minPrice: 10, maxPrice: 20, increment: 0.5 },
       { minPrice: 20, maxPrice: 999, increment: 1.0 },
     ],
-    categoriesOrder: ['MARQUEE', 'BATSMEN', 'ALL_ROUNDERS', 'BOWLERS', 'WICKET_KEEPERS'],
+    categoriesOrder: [...DEFAULT_CATEGORIES],
     isPublic: settings?.isPublic !== false,
     bidTimerSeconds: settings?.bidTimerSeconds === undefined ? DEFAULT_SETTINGS.bidTimerSeconds : clampTimer(settings.bidTimerSeconds),
     autoAdvance: typeof settings?.autoAdvance === 'boolean' ? settings.autoAdvance : DEFAULT_SETTINGS.autoAdvance,

@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS auction_settings (
   max_overseas INT NOT NULL DEFAULT 8,
   timer_seconds INT NOT NULL DEFAULT 30,
   is_public BOOLEAN NOT NULL DEFAULT true,
-  categories_order TEXT[] DEFAULT ARRAY['MARQUEE', 'BATSMEN', 'ALL_ROUNDERS', 'BOWLERS', 'WICKET_KEEPERS'],
+  categories_order TEXT[] DEFAULT ARRAY['MARQUEE', 'BATSMEN', 'WICKET_KEEPERS', 'ALL_ROUNDERS', 'BOWLERS'],
   increments_tier JSONB NOT NULL DEFAULT '[
     {"upTo": 50000000, "increment": 2000000},
     {"upTo": 100000000, "increment": 2500000},

@@ -4,7 +4,7 @@ import { celebrate } from '../utils/celebrate';
 import { AnimatePresence, motion } from 'motion/react';
 import { Play, Pause, Gavel, XCircle, SkipForward, StopCircle, Users, Globe, Copy, Check, Share2, Eye, UserX, Plus, Undo2, Zap, Trophy, Keyboard } from 'lucide-react';
 import { AuctionRoomState, AuctionSettings } from '../types';
-import { formatCategory, formatPrice, formatRole } from '../utils/format';
+import { formatLotSet, formatPrice, formatRole } from '../utils/format';
 import { Button, CountUp, DeltaPop, Drawer, EmptyState, Modal, Notice, Panel, PlayerPhoto, Price, StatusBadge, TeamLogo, TeamTag, Toast } from './ui';
 import { PlayerStats } from './PlayerStats';
 import { LotWipe } from './LotWipe';
@@ -179,7 +179,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <span className="-skew-x-12 bg-ipl-orange px-3 py-1 font-display text-lg font-extrabold uppercase tracking-wide text-night">
-              <span className="inline-block skew-x-12">{currentPlayer ? `${formatCategory(currentPlayer.category)} round` : 'Waiting room'}</span>
+              <span className="inline-block skew-x-12">{currentPlayer ? formatLotSet(currentPlayer.category, roomState.currentSet) : 'Waiting room'}</span>
             </span>
             {roomState.round === 'ACCELERATED' && (
               <span className="inline-flex -skew-x-12 items-center bg-ipl-gold px-3 py-1 font-display text-lg font-extrabold uppercase tracking-wide text-night">
@@ -570,7 +570,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
         </div>
       )}
 
-      <LotWipe playerId={currentPlayer?.id ?? null} lot={currentAuctionIndex} total={totalPlayersInPool} round={currentPlayer ? formatCategory(currentPlayer.category) : ''} />
+      <LotWipe playerId={currentPlayer?.id ?? null} lot={currentAuctionIndex} total={totalPlayersInPool} round={currentPlayer ? formatLotSet(currentPlayer.category, roomState.currentSet) : ''} />
 
       {/* Sold / unsold moment */}
       <AnimatePresence>

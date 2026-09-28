@@ -172,7 +172,7 @@ async function runAsyncTests() {
       maxSquadSize: 25,
       maxOverseas: 8,
       incrementTiers: [],
-      categoriesOrder: ['MARQUEE', 'BATSMEN', 'ALL_ROUNDERS', 'BOWLERS', 'WICKET_KEEPERS'],
+      categoriesOrder: [...engine.DEFAULT_CATEGORIES],
       isPublic: true,
       bidTimerSeconds: 0,
       autoAdvance: false,
@@ -345,6 +345,38 @@ function runEngineAndXITests(template: AuctionRoomState) {
     assert.strictEqual(room.currentHighestBidderTeamId, 'team-a', 'Undo must restore the leader.');
     assert.strictEqual(room.nextPlayerAt, null, 'Undo must cancel the auto-advance.');
     console.log('✓ 15. Pause & Undo: time left survives a pause; undoing a sale refunds and reopens the lot.');
+  }
+
+  // 15b. Running order: marquee set, then Batters / WK / All-rounders / Bowlers sets in rotation.
+  {
+    const sets = engine.buildAuctionSets(engine.DEFAULT_CATEGORIES, Math.random);
+    assert.strictEqual(sets[0].category, 'MARQUEE', 'The marquee set must open the auction.');
+    assert.deepStrictEqual(
+      sets.slice(1, 5).map((s) => `${s.category}-${s.number}`),
+      ['BATSMEN-1', 'WICKET_KEEPERS-1', 'ALL_ROUNDERS-1', 'BOWLERS-1'],
+      'Set 1 of each role must follow in rotation.',
+    );
+    const ids = sets.flatMap((s) => s.playerIds);
+    assert.strictEqual(ids.length, ALL_PLAYERS.length, 'Every player must be in exactly one set.');
+    assert.strictEqual(new Set(ids).size, ids.length, 'No player may appear twice.');
+    for (const s of sets) assert(s.playerIds.every((id) => PLAYERS_BY_ID[id].category === s.category), `Set ${s.category}-${s.number} mixes roles.`);
+    for (const cat of ['BATSMEN', 'WICKET_KEEPERS', 'ALL_ROUNDERS', 'BOWLERS']) {
+      const sizes = sets.filter((s) => s.category === cat).map((s) => s.playerIds.length);
+      assert(Math.max(...sizes) - Math.min(...sizes) <= 1, `${cat} sets must be evenly sized, got ${sizes.join(',')}.`);
+    }
+
+    // The auction walks the sets in order, skipping players already done.
+    const room = freshRoom();
+    engine.startAuction(room, t0, Math.random);
+    const first = room.auctionSets![0];
+    assert.deepStrictEqual(room.currentSet, { category: 'MARQUEE', number: 1 });
+    assert.strictEqual(room.currentPlayer!.id, first.playerIds[0]);
+    room.auctionedPlayerIds.push(...first.playerIds);
+    const next = engine.pickNextPlayer(room, Math.random)!;
+    assert.deepStrictEqual(room.currentSet, { category: 'BATSMEN', number: 1 });
+    assert.strictEqual(next.id, room.auctionSets![1].playerIds[0]);
+    const summary = sets.slice(0, 6).map((s) => `${s.category}-${s.number}(${s.playerIds.length})`).join(' → ');
+    console.log(`✓ 15b. Auction Sets: ${sets.length} sets — ${summary} …`);
   }
 
   // 16. Playing XI rules.

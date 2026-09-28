@@ -35,6 +35,14 @@ export function formatCategory(category: string): string {
   return CATEGORY_LABELS[category] ?? category;
 }
 
+// Heading for the lot on stage: "Marquee set", "Batters · Set 2", or "Bowlers round" when
+// the player isn't part of a set (the accelerated round).
+export function formatLotSet(category: string, set?: { category: string; number: number } | null): string {
+  if (!set) return `${formatCategory(category)} round`;
+  if (set.category === 'MARQUEE') return 'Marquee set';
+  return `${formatCategory(set.category)} · Set ${set.number}`;
+}
+
 export function calculateNextLegalBid(currentBid: number): number {
   if (currentBid < 5.0) {
     return Math.round((currentBid + 0.20) * 100) / 100;

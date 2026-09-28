@@ -1,4 +1,4 @@
-import { AuctionRoomState, AuctionSettings, Player, PlayerCategory } from '../types';
+import { AuctionRoomState, AuctionSet, AuctionSettings, Player, PlayerCategory } from '../types';
 import { ALL_PLAYERS, PLAYERS_BY_CATEGORY, PLAYERS_BY_ID } from '../data/players';
 
 /*
@@ -29,7 +29,9 @@ export const DEFAULT_SETTINGS: Pick<AuctionSettings, 'bidTimerSeconds' | 'autoAd
 };
 
 const RESUME_GRACE_MS = 5000;
-const DEFAULT_CATEGORIES: PlayerCategory[] = ['MARQUEE', 'BATSMEN', 'ALL_ROUNDERS', 'BOWLERS', 'WICKET_KEEPERS'];
+export const DEFAULT_CATEGORIES: PlayerCategory[] = ['MARQUEE', 'BATSMEN', 'WICKET_KEEPERS', 'ALL_ROUNDERS', 'BOWLERS'];
+// Average players per set; the number of rounds is picked from it (see buildAuctionSets).
+const SET_TARGET_SIZE = 8;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const ms = (value: string | null | undefined) => (value ? Date.parse(value) : NaN);
@@ -74,15 +76,59 @@ export function normalizeRoom(room: AuctionRoomState): AuctionRoomState {
 
 // ─── Player selection ───────────────────────────────────────────────────────
 
-// Picks the next player. Main round: category by category, random within a category.
+function shuffled<T>(items: T[], random: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// The MAIN round running order: one marquee set, then a set from each other category in
+// turn (Batters, Wicket-keepers, All-rounders, Bowlers by default), round after round.
+// Every category is split over the same number of rounds, so set sizes follow the size of
+// each pool and all of them run out together. Players are shuffled before the split.
+export function buildAuctionSets(order: PlayerCategory[] = DEFAULT_CATEGORIES, random: () => number = Math.random): AuctionSet[] {
+  const cats = order.length ? order : DEFAULT_CATEGORIES;
+  const rotation = cats.filter((c) => c !== 'MARQUEE');
+  const pools = new Map(rotation.map((c) => [c, shuffled(PLAYERS_BY_CATEGORY[c] || [], random).map((p) => p.id)]));
+  const rotated = [...pools.values()].reduce((n, ids) => n + ids.length, 0);
+  const rounds = Math.max(1, Math.round(rotated / (rotation.length * SET_TARGET_SIZE)));
+
+  const sets: AuctionSet[] = [];
+  if (cats.includes('MARQUEE') && PLAYERS_BY_CATEGORY.MARQUEE?.length) {
+    sets.push({ category: 'MARQUEE', number: 1, playerIds: shuffled(PLAYERS_BY_CATEGORY.MARQUEE, random).map((p) => p.id) });
+  }
+  const numbers = new Map<PlayerCategory, number>();
+  for (let r = 0; r < rounds; r++) {
+    for (const cat of rotation) {
+      const ids = pools.get(cat)!;
+      const playerIds = ids.slice(Math.floor((r * ids.length) / rounds), Math.floor(((r + 1) * ids.length) / rounds));
+      if (!playerIds.length) continue;
+      const number = (numbers.get(cat) ?? 0) + 1;
+      numbers.set(cat, number);
+      sets.push({ category: cat, number, playerIds });
+    }
+  }
+  return sets;
+}
+
+// Picks the next player. Main round: set by set (see buildAuctionSets), drawn on first use.
 // When the main pool is empty, starts the accelerated round of unsold players (once).
 export function pickNextPlayer(room: AuctionRoomState, random: () => number = Math.random): Player | null {
   if (room.round === 'MAIN') {
     const done = new Set(room.auctionedPlayerIds);
-    for (const cat of room.settings.categoriesOrder?.length ? room.settings.categoriesOrder : DEFAULT_CATEGORIES) {
-      const pool = (PLAYERS_BY_CATEGORY[cat] || []).filter((p) => !done.has(p.id));
-      if (pool.length) return pool[Math.floor(random() * pool.length)];
+    if (!room.auctionSets) room.auctionSets = buildAuctionSets(room.settings.categoriesOrder, random);
+    for (const set of room.auctionSets) {
+      const id = set.playerIds.find((pid) => !done.has(pid) && PLAYERS_BY_ID[pid]);
+      if (id) {
+        room.currentSet = { category: set.category, number: set.number };
+        return PLAYERS_BY_ID[id];
+      }
     }
+    // Players added to the pool after the sets were drawn.
+    room.currentSet = null;
     const rest = ALL_PLAYERS.filter((p) => !done.has(p.id));
     if (rest.length) return rest[Math.floor(random() * rest.length)];
 
@@ -93,6 +139,7 @@ export function pickNextPlayer(room: AuctionRoomState, random: () => number = Ma
     room.totalPlayersInPool += room.accelerationQueue.length;
   }
 
+  room.currentSet = null;
   const queue = room.accelerationQueue ?? [];
   while (queue.length) {
     const next = PLAYERS_BY_ID[queue.shift()!];
@@ -138,6 +185,7 @@ function completeAuction(room: AuctionRoomState, now: number) {
   room.status = 'COMPLETED';
   room.completedAt = iso(now);
   room.currentPlayer = null;
+  room.currentSet = null;
   room.currentHighestBidderTeamId = null;
   room.currentBid = 0;
   clearClock(room);
@@ -226,6 +274,7 @@ export function tick(room: AuctionRoomState, now: number, random: () => number =
 export function startAuction(room: AuctionRoomState, now: number, random: () => number = Math.random): boolean {
   if (room.status !== 'LOBBY' && room.status !== 'READY') return false;
   room.currentAuctionIndex = 0;
+  room.auctionSets = buildAuctionSets(room.settings.categoriesOrder, random);
   openNextLot(room, now, random);
   return true;
 }
