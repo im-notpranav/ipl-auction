@@ -47,3 +47,21 @@ export function calculateNextLegalBid(currentBid: number): number {
   }
   return Math.round((currentBid + 1.00) * 100) / 100;
 }
+
+// Jump bids: raise the price by more than the standard step in one go (₹25 L, ₹50 L, ₹1 Cr).
+export const JUMP_BID_STEPS = [0.25, 0.5, 1.0];
+
+/**
+ * Every amount a team may bid right now: the standard next bid first, then each jump
+ * that lands above it. Jumps are measured from the current price, so once the standard
+ * step is ₹50 L or more, the smaller jumps drop out.
+ */
+export function bidOptions(currentBid: number, hasBidder: boolean): number[] {
+  const next = hasBidder ? calculateNextLegalBid(currentBid) : currentBid;
+  const jumps = JUMP_BID_STEPS.map((step) => Math.round((currentBid + step) * 100) / 100).filter((amount) => amount > next);
+  return [next, ...jumps];
+}
+
+export function isLegalBidAmount(currentBid: number, hasBidder: boolean, amount: number): boolean {
+  return bidOptions(currentBid, hasBidder).some((option) => Math.abs(option - amount) < 1e-9);
+}

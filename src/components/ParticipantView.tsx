@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react';
 import { Users, MessageSquare, Send, CheckCircle2, Globe, Hourglass, Gavel, ChevronRight, Star, Zap } from 'lucide-react';
 import { AuctionRoomState, ChatMessage, PlayerRole, Team } from '../types';
-import { formatCategory, formatPrice, formatRole, calculateNextLegalBid } from '../utils/format';
+import { formatCategory, formatPrice, formatRole, calculateNextLegalBid, bidOptions } from '../utils/format';
+
+const stepLabel = (step: number) => (step < 1 ? `+₹${Math.round(step * 100)} L` : `+₹${step} Cr`);
 import { Button, CountUp, Drawer, EmptyState, Notice, PlayerPhoto, Price, RatingRing, TeamLogo, TeamTag, Toast } from './ui';
 import { PlayerStats } from './PlayerStats';
 import { getPlayerRating } from '../services/playerRatings';
@@ -18,7 +20,7 @@ interface ParticipantViewProps {
   chatMessages: ChatMessage[];
   lastError: string | null;
   serverOffsetMs: number;
-  onPlaceBid: () => void;
+  onPlaceBid: (amount?: number) => void;
   onSendChat: (text: string) => void;
 }
 
@@ -81,6 +83,10 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
   const unread = Math.max(0, chatMessages.length - seenMessages);
 
   const nextBid = currentHighestBidderTeamId ? calculateNextLegalBid(currentBid) : currentBid;
+  // Jump bids (+₹25 L / +₹50 L / +₹1 Cr) on top of the standard next bid.
+  const jumpBids = bidOptions(currentBid, !!currentHighestBidderTeamId)
+    .slice(1)
+    .map((amount) => ({ amount, step: Math.round((amount - currentBid) * 100) / 100 }));
   const isLeading = !!myTeam && currentHighestBidderTeamId === myTeam.id;
   const openSlotsAfter = myTeam ? Math.max(0, settings.maxSquadSize - myTeam.squadSize - 1) : 0;
   const maxBid = myTeam ? Math.max(0, Math.round((myTeam.remainingPurse - RESERVE_PER_SLOT * openSlotsAfter) * 100) / 100) : 0;
@@ -162,7 +168,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
   const urgent = clock.active && !clock.paused && clock.phase === 'urgent' && status === 'BIDDING';
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md flex-col px-4 pb-36 pt-4">
+    <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md flex-col px-4 pb-52 pt-4">
       {myTeam ? (
         <div className="relative overflow-hidden rounded-2xl border border-line bg-pitch p-4">
           <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: myTeam.color || '#8390bd' }} aria-hidden />
@@ -385,6 +391,25 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
               </motion.div>
             ) : (
               <motion.div key="bid" className="relative" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.18 }}>
+                {jumpBids.length > 0 && (
+                  <div className="mb-2 grid grid-cols-3 gap-2" role="group" aria-label="Jump bids">
+                    {jumpBids.map(({ amount, step }) => (
+                      <Button
+                        key={step}
+                        size="sm"
+                        variant="secondary"
+                        disabled={amount > maxBid}
+                        onClick={() => onPlaceBid(amount)}
+                        aria-label={`Jump bid ${stepLabel(step)} to ${formatPrice(amount)}`}
+                        className="flex h-12 flex-col gap-0 leading-tight"
+                      >
+                        <span className="text-base">{stepLabel(step)}</span>
+                        <span className="text-xs font-semibold normal-case tracking-normal text-ink-3 tabular">{formatPrice(amount)}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                <div className="relative">
                 {/* Final seconds: a red ring ripples out from the paddle. The button itself stays solid so it never looks disabled. */}
                 {urgent && <span className="pointer-events-none absolute inset-0 rounded-xl border-2 border-danger animate-urgent-ring" aria-hidden />}
                 <Button
@@ -392,7 +417,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                   size="xl"
                   fullWidth
                   icon={<Gavel className="relative h-6 w-6" />}
-                  onClick={onPlaceBid}
+                  onClick={() => onPlaceBid()}
                   className={`relative overflow-hidden ${urgent ? 'ring-2 ring-danger ring-offset-2 ring-offset-night' : ''}`}
                 >
                   {clock.active && (
@@ -404,6 +429,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({ roomState, par
                   </span>
                   {clock.active && <span className="relative ml-1 rounded-md bg-night/25 px-1.5 text-lg tabular">{clock.secondsLeft}s</span>}
                 </Button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

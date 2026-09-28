@@ -26,7 +26,7 @@ const LOT_FLOW = [
 const RULES = [
   { icon: Wallet, title: 'Purse reserve', text: 'Keep ₹0.20 Cr for every squad slot you still need to fill. Bids that break this are blocked.' },
   { icon: Globe, title: 'Overseas cap', text: 'Up to 8 overseas players in a squad. Your paddle locks for overseas players once you hit it.' },
-  { icon: Timer, title: 'Bid increments', text: '+₹0.20 Cr up to ₹5 Cr, +₹0.25 Cr to ₹10 Cr, +₹0.50 Cr to ₹20 Cr, then +₹1 Cr. The paddle always shows the next legal bid.' },
+  { icon: Timer, title: 'Bid increments', text: '+₹0.20 Cr up to ₹5 Cr, +₹0.25 Cr to ₹10 Cr, +₹0.50 Cr to ₹20 Cr, then +₹1 Cr. The paddle always shows the next legal bid, plus jump bids of +₹25 L, +₹50 L and +₹1 Cr to raise faster.' },
 ];
 
 const XI_RULES = [

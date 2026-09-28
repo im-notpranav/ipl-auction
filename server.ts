@@ -26,7 +26,7 @@ import {
   WSMessage,
 } from './src/types';
 import { ALL_PLAYERS, PLAYERS_BY_CATEGORY, PLAYERS_BY_ID } from './src/data/players';
-import { calculateNextLegalBid } from './src/utils/format';
+import { calculateNextLegalBid, isLegalBidAmount } from './src/utils/format';
 import {
   DEFAULT_SETTINGS,
   advance,
@@ -675,10 +675,19 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        const nextLegal = room.currentHighestBidderTeamId ? calculateNextLegalBid(room.currentBid) : room.currentBid;
+        const hasBidder = !!room.currentHighestBidderTeamId;
+        const nextLegal = hasBidder ? calculateNextLegalBid(room.currentBid) : room.currentBid;
+        // A jump bid names its amount; it must still be legal at the current price, so a
+        // press made against a price that has since moved is refused rather than guessed at.
+        const requested = typeof payload?.amount === 'number' && Number.isFinite(payload.amount) ? Math.round(payload.amount * 100) / 100 : null;
+        if (requested !== null && !isLegalBidAmount(room.currentBid, hasBidder, requested)) {
+          ws.send(JSON.stringify({ type: 'BID_REJECTED', payload: { reason: 'The price moved before your bid landed. Check the new price and bid again.' } }));
+          return;
+        }
+        const bidAmount = requested ?? nextLegal;
 
         // Verify purse
-        if (team.remainingPurse < nextLegal) {
+        if (team.remainingPurse < bidAmount) {
           ws.send(JSON.stringify({ type: 'BID_REJECTED', payload: { reason: `Insufficient purse balance (Available: ₹${team.remainingPurse.toFixed(2)} Cr)` } }));
           return;
         }
@@ -698,7 +707,7 @@ wss.on('connection', (ws) => {
         // Ensure minimum 1 Cr reserved for remaining required squad slots
         const slotsRemaining = room.settings.maxSquadSize - team.squadSize - 1;
         const requiredReserve = Math.max(0, slotsRemaining * 0.2); // 20L minimum per slot
-        if (team.remainingPurse - nextLegal < requiredReserve && slotsRemaining > 0) {
+        if (team.remainingPurse - bidAmount < requiredReserve && slotsRemaining > 0) {
           ws.send(
             JSON.stringify({
               type: 'BID_REJECTED',
@@ -725,13 +734,13 @@ wss.on('connection', (ws) => {
           teamShortName: team.shortName,
           bidderParticipantId: participant.id,
           bidderDisplayName: participant.displayName,
-          amount: nextLegal,
+          amount: bidAmount,
           timestamp: new Date().toISOString(),
         };
 
         (newBid as any).requestId = incomingRequestId;
 
-        room.currentBid = nextLegal;
+        room.currentBid = bidAmount;
         room.currentHighestBidderTeamId = team.id;
         room.currentBidVersion++;
         room.recentBids.unshift(newBid);

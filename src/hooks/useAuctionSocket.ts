@@ -245,9 +245,13 @@ export function useAuctionSocket(roomId: string | null, participantId: string | 
     [roomId, participantId, flashError]
   );
 
-  const placeBid = useCallback(() => {
-    sendAction('PLACE_BID');
-  }, [sendAction]);
+  // No amount = the standard next bid; an amount = a jump bid the server re-checks.
+  const placeBid = useCallback(
+    (amount?: number) => {
+      sendAction('PLACE_BID', amount === undefined ? undefined : { amount });
+    },
+    [sendAction]
+  );
 
   const startAuction = useCallback(() => {
     sendAction('START_AUCTION');

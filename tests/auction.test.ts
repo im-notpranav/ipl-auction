@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { ALL_PLAYERS, PLAYERS_BY_ID } from '../src/data/players';
-import { calculateNextLegalBid } from '../src/utils/format';
+import { bidOptions, calculateNextLegalBid, isLegalBidAmount } from '../src/utils/format';
 import { generateTeamAnalysis } from '../src/services/bestXIEngine';
 import { getPlayerRating } from '../src/services/playerRatings';
 import * as engine from '../src/services/auctionEngine';
@@ -34,7 +34,13 @@ assert.strictEqual(calculateNextLegalBid(5.0), 5.25);
 assert.strictEqual(calculateNextLegalBid(9.75), 10.0);
 assert.strictEqual(calculateNextLegalBid(10.0), 10.5);
 assert.strictEqual(calculateNextLegalBid(20.0), 21.0);
-console.log('✓ 3. Bid Increment Engine: All price thresholds calculate legal next bids.');
+// Jump bids: +25L / +50L / +1Cr from the current price, only when above the standard step.
+assert.deepStrictEqual(bidOptions(2.0, true), [2.2, 2.25, 2.5, 3.0]);
+assert.deepStrictEqual(bidOptions(2.0, false), [2.0, 2.25, 2.5, 3.0]); // opening bid can jump off the base price
+assert.deepStrictEqual(bidOptions(12.0, true), [12.5, 13.0]); // +25L and +50L are below the 50L step
+assert.deepStrictEqual(bidOptions(20.0, true), [21.0]);
+assert(isLegalBidAmount(2.0, true, 2.5) && !isLegalBidAmount(2.0, true, 2.4) && !isLegalBidAmount(2.2, true, 2.5));
+console.log('✓ 3. Bid Increment Engine: All price thresholds calculate legal next bids and jump bids.');
 
 // 4. Role & Permission Isolation Test
 const mockAuctioneer = {
