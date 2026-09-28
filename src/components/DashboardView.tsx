@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Gavel, HelpCircle, ArrowRight, RefreshCw, Play, FileText, Database, Radio, Trophy, Tv, Smartphone, BarChart3, QrCode } from 'lucide-react';
+import { LandingIntro, introHold, shouldPlayIntro } from './LandingIntro';
 import { ALL_PLAYERS } from '../data/players';
 import { FRANCHISES, Franchise, findFranchise } from '../data/franchises';
 import { getPlayerRating } from '../services/playerRatings';
@@ -395,6 +396,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
   const [tab, setTab] = useState<'live' | 'finished'>('live');
+  const reduce = useReducedMotion();
+  const [intro, setIntro] = useState(shouldPlayIntro);
+  const endIntro = useCallback(() => setIntro(false), []);
+  // The hero lands as the intro curtain lifts, not unseen underneath it.
+  const [heroDelay] = useState(() => (intro ? introHold(reduce) : 0));
 
   const fetchRooms = useCallback(() => {
     setLoadState('loading');
@@ -437,6 +443,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
 
   return (
     <div>
+      <AnimatePresence>{intro && <LandingIntro key="intro" onDone={endIntro} />}</AnimatePresence>
+
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="stadium relative isolate overflow-hidden">
         <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
@@ -446,7 +454,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
 
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-28 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:pb-32 lg:pt-14">
           <div className="min-w-0">
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="flex items-center gap-4">
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: heroDelay, ease: EASE }} className="flex items-center gap-4">
               <BrandMark className="h-16 w-[58px] shrink-0 drop-shadow-[0_10px_24px_rgb(243_111_33/0.35)] sm:h-20 sm:w-[72px]" />
               <div className="leading-none">
                 <p className="font-display text-sm font-bold uppercase tracking-[0.3em] text-ipl-gold">Fan-made IPL auction room</p>
@@ -458,17 +466,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
 
             {/* The two lines land one after the other, like a broadcast title card. */}
             <h1 className="mt-8 pb-2 font-display text-6xl font-extrabold uppercase italic leading-[0.95] tracking-tight text-ink sm:text-7xl xl:text-8xl">
-              <motion.span className="block" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 170, damping: 24, delay: 0.08 }}>
+              <motion.span className="block" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 170, damping: 24, delay: heroDelay + 0.08 }}>
                 Your league.
               </motion.span>
-              <motion.span className="block" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 170, damping: 24, delay: 0.2 }}>
+              <motion.span className="block" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 170, damping: 24, delay: heroDelay + 0.2 }}>
                 <span className="bg-gradient-to-r from-ipl-orange to-ipl-gold bg-clip-text pr-2 text-transparent">Your auction.</span>
               </motion.span>
             </h1>
-            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3, ease: EASE }} className="mt-5 max-w-lg text-lg leading-relaxed text-ink-2">
+            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: heroDelay + 0.3, ease: EASE }} className="mt-5 max-w-lg text-lg leading-relaxed text-ink-2">
               Kohli, Rohit, Dhoni and {ALL_PLAYERS.length - 3} more under the hammer. The auction runs on the big screen, every team bids from a phone.
             </motion.p>
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.38, ease: EASE }} className="mt-8 flex flex-wrap gap-3">
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: heroDelay + 0.38, ease: EASE }} className="mt-8 flex flex-wrap gap-3">
               <Button variant="primary" size="lg" icon={<Gavel className="h-5 w-5" />} onClick={onOpenCreate}>
                 Create auction
               </Button>
@@ -476,9 +484,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
                 How it works
               </Button>
             </motion.div>
+
+            {/* Join shortcut: team owners with a code skip the scroll down to the join panel. */}
+            <motion.form
+              onSubmit={handleJoin}
+              noValidate
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: heroDelay + 0.46, ease: EASE }}
+              className="mt-6 max-w-md rounded-2xl border border-line-strong bg-night/60 p-3 backdrop-blur-sm"
+            >
+              <label htmlFor="hero-join-code" className="block px-1 pb-2 text-sm font-semibold text-ink-2">
+                Got a room code? Join the game
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="hero-join-code"
+                  value={joinCode}
+                  onChange={(e) => {
+                    setJoinCode(e.target.value.toUpperCase());
+                    setJoinError('');
+                  }}
+                  placeholder="AX72K9"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={!!joinError || undefined}
+                  aria-describedby={joinError ? 'hero-join-error' : undefined}
+                  className={`h-12 min-w-0 flex-1 rounded-xl border bg-night px-3.5 font-display text-xl font-bold tracking-[0.25em] text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:tracking-[0.25em] placeholder:text-ink-3 hover:border-line-strong focus:border-ipl-orange focus:ring-2 focus:ring-ipl-orange/25 ${joinError ? 'border-danger' : 'border-line'}`}
+                />
+                <Button type="submit" variant="primary" icon={<ArrowRight className="h-4 w-4" />} className="h-12">
+                  Join
+                </Button>
+              </div>
+              {joinError && (
+                <p id="hero-join-error" role="alert" className="px-1 pt-2 text-sm text-danger">
+                  {joinError}
+                </p>
+              )}
+            </motion.form>
           </div>
 
-          <motion.div initial={{ opacity: 0, y: 40, rotate: 2 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ duration: 0.9, delay: 0.15, ease: EASE }}>
+          <motion.div initial={{ opacity: 0, y: 40, rotate: 2 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ duration: 0.9, delay: heroDelay + 0.15, ease: EASE }}>
             <StarStage />
           </motion.div>
         </div>
