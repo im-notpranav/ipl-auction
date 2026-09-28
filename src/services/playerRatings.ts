@@ -1,5 +1,8 @@
 import { Player, PlayerRole } from '../types';
 import { ALL_PLAYERS } from '../data/players';
+import { LEGENDS, LEGEND_MIN_OVERALL } from '../data/legends';
+
+export const LEGEND_TAG = 'IPL Legend';
 
 /*
   How player strength is measured.
@@ -78,6 +81,8 @@ export interface PlayerRating {
   confidence: SampleConfidence;
   sampleNote: string;
   tags: string[];
+  /** Set for IPL legends: the rating their record alone earns, before the legend lift. */
+  legendBaseOverall?: number;
 }
 
 // ─── Raw → sample-adjusted ──────────────────────────────────────────────────
@@ -236,6 +241,14 @@ export function computePlayerRating(p: Player): PlayerRating {
   }
   if (p.batting.matches >= 100) tags.push(`${p.batting.matches} IPL matches`);
   if (p.metadata.captaincyAppearances > 0) tags.push('Has captained');
+
+  // Legends (src/data/legends.ts) get a rating floor for what they mean to the IPL;
+  // the record-based figure is kept so the UI can say what was lifted.
+  if (p.id in LEGENDS) {
+    tags.unshift(LEGEND_TAG);
+    const lifted = Math.max(overall, LEGEND_MIN_OVERALL);
+    return { overall: lifted, batting, bowling, experience, keeping, primary, confidence, sampleNote, tags, legendBaseOverall: overall };
+  }
 
   return { overall, batting, bowling, experience, keeping, primary, confidence, sampleNote, tags };
 }

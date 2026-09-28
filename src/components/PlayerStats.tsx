@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Info } from 'lucide-react';
+import { Info, Star } from 'lucide-react';
 import { Player } from '../types';
-import { getPlayerRating, topShare } from '../services/playerRatings';
+import { LEGEND_TAG, getPlayerRating, topShare } from '../services/playerRatings';
 import { RatingRing, StatMeter } from './ui';
 
 /*
@@ -80,11 +80,24 @@ export function PlayerStats({ player, variant = 'stage' }: { player: Player; var
 
       {(r.tags.length > 0 || r.confidence !== 'HIGH') && (
         <div className="flex flex-wrap items-center gap-2">
-          {r.tags.map((t) => (
-            <span key={t} className="rounded-full border border-line-strong bg-pitch-2 px-2.5 py-0.5 text-xs font-semibold text-ink-2">
-              {t}
+          {r.tags.map((t) =>
+            t === LEGEND_TAG ? (
+              <span key={t} className="inline-flex items-center gap-1 rounded-full border border-ipl-gold/50 bg-ipl-gold/15 px-2.5 py-0.5 text-xs font-bold text-ipl-gold">
+                <Star className="h-3 w-3 fill-current" aria-hidden />
+                {t}
+              </span>
+            ) : (
+              <span key={t} className="rounded-full border border-line-strong bg-pitch-2 px-2.5 py-0.5 text-xs font-semibold text-ink-2">
+                {t}
+              </span>
+            ),
+          )}
+          {r.legendBaseOverall !== undefined && r.legendBaseOverall < r.overall && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-ink-3">
+              <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Rating lifted from {r.legendBaseOverall} for legend status. Career numbers are unchanged.
             </span>
-          ))}
+          )}
           {r.confidence !== 'HIGH' && (
             <span className="inline-flex items-center gap-1.5 text-xs text-ink-3">
               <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
