@@ -6,7 +6,6 @@ import { FRANCHISES } from '../data/franchises';
 import { Button, EmptyState, Notice, Panel, PanelHeader, TeamLogo, TeamTag, TextField } from './ui';
 
 interface JoinTeamData {
-  displayName: string;
   teamName: string;
   teamShortName: string;
   color: string;
@@ -23,15 +22,6 @@ interface LobbyViewProps {
 
 const MAX_TEAMS = 10;
 const EASE = [0.16, 1, 0.3, 1] as const;
-
-function StepLabel({ n, children }: { n: number; children: React.ReactNode }) {
-  return (
-    <span className="flex items-center gap-2.5 text-sm font-semibold text-ink">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ipl-orange font-display text-sm font-extrabold text-night">{n}</span>
-      {children}
-    </span>
-  );
-}
 
 function RuleChip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -56,12 +46,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/join/${shareCode}` : '';
 
   const [copied, setCopied] = useState(false);
-  const [displayName, setDisplayName] = useState('');
   const [teamName, setTeamName] = useState('');
   const [teamShortName, setTeamShortName] = useState('');
   const [teamColor, setTeamColor] = useState(FRANCHISES[1].color);
   const [customTeam, setCustomTeam] = useState(false);
-  const [errors, setErrors] = useState<{ displayName?: string; teamName?: string; teamShortName?: string; submit?: string }>({});
+  const [errors, setErrors] = useState<{ teamName?: string; teamShortName?: string; submit?: string }>({});
   const [submitting, setSubmitting] = useState(false);
 
   const copyLink = () => {
@@ -92,7 +81,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
     if (!teamName.trim()) found.teamName = 'Pick a franchise above, or create your own team.';
     if (short.length < 2 || short.length > 4) found.teamShortName = 'Use 2 to 4 letters, like CSK or MI.';
     else if (takenShortNames.has(short)) found.teamShortName = `${short} is already taken in this room.`;
-    if (!displayName.trim()) found.displayName = 'Enter your name so the room knows who owns the team.';
     setErrors(found);
     if (Object.keys(found).length) {
       if (found.teamName || found.teamShortName) setCustomTeam((c) => c || !!teamName);
@@ -101,7 +89,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
 
     setSubmitting(true);
     try {
-      await onJoinAsTeam({ displayName: displayName.trim(), teamName: teamName.trim(), teamShortName: short, color: teamColor });
+      await onJoinAsTeam({ teamName: teamName.trim(), teamShortName: short, color: teamColor });
     } catch (err) {
       setErrors({ submit: err instanceof Error ? err.message : 'Could not register your team. Try again.' });
     } finally {
@@ -160,7 +148,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
     </motion.section>
   ) : (
     <Panel raised>
-      <PanelHeader icon={<UserPlus className="h-5 w-5" />} title="Register your team" description="Takes 20 seconds. You bid from this phone." />
+      <PanelHeader icon={<UserPlus className="h-5 w-5" />} title="Register your team" description="Pick a franchise and you're in. You bid from this phone." />
       {roomFull ? (
         <div className="p-5">
           <Notice tone="error">This room already has {MAX_TEAMS} teams. Ask the auctioneer to make space.</Notice>
@@ -170,7 +158,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
           {errors.submit && <Notice tone="error">{errors.submit}</Notice>}
 
           <div className="flex flex-col gap-3">
-            <StepLabel n={1}>Pick a franchise</StepLabel>
+            <span className="text-sm font-semibold text-ink">Pick a franchise</span>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3" role="group" aria-label="Franchises">
               {FRANCHISES.map((f) => {
                 const takenBy = teamList.find((t) => t.shortName.toUpperCase() === f.short);
@@ -253,19 +241,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
             </AnimatePresence>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <StepLabel n={2}>Who's the owner?</StepLabel>
-            <TextField
-              label="Your name"
-              autoComplete="given-name"
-              maxLength={30}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              error={errors.displayName}
-              hint="Shown to the room next to your team."
-            />
-          </div>
-
           <div className="flex items-center gap-3 rounded-xl border border-line bg-night/50 p-3" aria-live="polite">
             <span
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-display text-lg font-extrabold text-night"
@@ -276,7 +251,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
             </span>
             <span className="min-w-0 text-sm">
               <span className="block truncate font-semibold text-ink">{teamName.trim() || 'Your team'}</span>
-              <span className="block truncate text-ink-3">Owner: {displayName.trim() || 'you'} · ₹{settings.startingPurse} Cr purse</span>
+              <span className="block truncate text-ink-3">₹{settings.startingPurse} Cr purse</span>
             </span>
           </div>
 
@@ -374,8 +349,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
                         <p className="flex items-center gap-1.5 text-sm text-ink-3">
                           <span className={`h-2 w-2 shrink-0 rounded-full ${owner?.connected ? 'bg-live' : 'bg-ink-3/50'}`} aria-hidden />
                           <span className="truncate">
-                            {owner?.displayName || 'Owner'}
-                            <span className="sr-only">{owner?.connected ? ', online' : ', offline'}</span>
+                            {owner?.connected ? 'Online' : 'Offline'}
                           </span>
                           {t.id === myTeamId && <span className="font-semibold text-ipl-orange">· You</span>}
                         </p>

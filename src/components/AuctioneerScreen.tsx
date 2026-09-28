@@ -486,7 +486,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                         <p className="truncate font-display text-lg font-bold uppercase tracking-wide text-ink">{t.name}</p>
                         <p className="flex items-center gap-1.5 text-sm text-ink-3">
                           <span className={`h-1.5 w-1.5 rounded-full ${participants[t.ownerParticipantId]?.connected ? 'bg-live' : 'bg-ink-3'}`} aria-hidden />
-                          {participants[t.ownerParticipantId]?.displayName || 'Owner'}
+                          {participants[t.ownerParticipantId]?.connected ? 'Online' : 'Offline'}
                         </p>
                       </motion.li>
                     ))}
@@ -668,7 +668,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                       <p className="mt-1 truncate font-display text-lg font-bold uppercase tracking-wide text-ink">{team.name}</p>
                       <p className="flex items-center gap-1.5 text-sm text-ink-3">
                         <span className={`h-1.5 w-1.5 rounded-full ${owner?.connected ? 'bg-live' : 'bg-ink-3'}`} aria-hidden />
-                        {owner?.displayName || 'Owner'} · {owner?.connected ? 'online' : 'offline'}
+                        {owner?.connected ? 'Online' : 'Offline'}
                       </p>
                     </div>
                     {canControl && (

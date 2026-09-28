@@ -175,7 +175,7 @@ export default function App() {
   };
 
   // Handle Participant Registration — supports both roomCode and roomId
-  const handleJoinAsTeam = async (formData: { displayName: string; teamName: string; teamShortName: string; color: string }) => {
+  const handleJoinAsTeam = async (formData: { teamName: string; teamShortName: string; color: string }) => {
     if (!activeRoomId) throw new Error('No auction room is open.');
     const data = await postJson(`/api/rooms/${activeRoomId}/join`, formData);
     if (!data.participantId) throw new Error('Could not register your team. Try again.');
