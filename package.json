@@ -15,6 +15,7 @@
     "test": "tsx tests/auction.test.ts && tsx tests/playingXI.test.ts",
     "verify:players": "tsx scripts/verifyPlayers.ts",
     "sync:images": "tsx scripts/syncPlayerImages.ts",
+    "sync:stats": "tsx scripts/syncPlayerStats.ts",
     "build:client": "vite build",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist-server/server.cjs --external:bufferutil --external:utf-8-validate \"--banner:js=process.env.NODE_ENV ??= 'production';\""
   },
@@ -48,6 +49,7 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.5",
     "esbuild": "^0.28.2",
+    "fflate": "^0.8.3",
     "sharp": "^0.35.4",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",

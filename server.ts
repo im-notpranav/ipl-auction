@@ -234,7 +234,7 @@ app.get('/api/health', async (_req, res) => {
     appStatus: 'ok',
     roomsActive: Object.keys(rooms).length,
     database: dbConnected ? 'Connected (Supabase)' : 'Connected (Local Persistence)',
-    cricketApi: health.apiConfigured ? 'Connected (Sportmonks)' : 'Connected (Cached 350 Snapshot)',
+    cricketApi: `Cricsheet snapshot, IPL matches up to ${health.lastSync} (npm run sync:stats)`,
     playerImageApi: 'Local photo library (IPL squads + Wikipedia, npm run sync:images)',
     ...health,
   });

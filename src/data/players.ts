@@ -4,9 +4,10 @@ import { rawPlayersDataset, RawPlayerDef } from './rawPlayersList';
 import { rawPlayersPart2 } from './rawPlayersPart2';
 import { rawPlayersPart3 } from './rawPlayersPart3';
 import { resolvePlayerImage } from './playerImages';
+import { applyCareerStats, experienceLabel } from './playerStats';
 
-// The raw lists carry real career figures only. Anything else is either derived
-// exactly from them or left out; nothing is estimated from a rule of thumb.
+// The raw lists hold hand-entered figures that are only a fallback: applyCareerStats
+// replaces them with the record computed from Cricsheet whenever the player is matched.
 function transformRawPlayer(def: RawPlayerDef): PlayerWithoutImage {
   const bowled = def.wickets > 0 && def.economy > 0 && def.bowlAvg > 0;
   // avg = runs / wkts and econ = runs / overs, so balls = 6 x wkts x avg / econ.
@@ -26,7 +27,7 @@ function transformRawPlayer(def: RawPlayerDef): PlayerWithoutImage {
     previousIPLTeam: def.previousIPLTeam,
     official2026Team: def.official2026Team || def.previousIPLTeam,
     official2026AuctionStatus: def.official2026AuctionStatus || 'AUCTION_POOL_2026',
-    statsSource: 'Official IPL Career Data Provider',
+    statsSource: '',
     statsLastUpdated: '2026-04-10',
     batting: {
       matches: def.matches,
@@ -56,7 +57,7 @@ function transformRawPlayer(def: RawPlayerDef): PlayerWithoutImage {
     metadata: {
       seasons: def.seasons,
       iplMatches: def.matches,
-      iplExperience: def.seasons >= 10 ? 'IPL Legend' : def.seasons >= 5 ? 'Experienced Pro' : def.seasons >= 2 ? 'Emerging Talent' : 'Debut Candidate',
+      iplExperience: experienceLabel(def.seasons),
       captaincyAppearances: def.isCaptain ? Math.round(def.matches * 0.4) : 0,
       wicketkeepingAppearances: def.isWK ? def.matches : 0,
     },
@@ -69,11 +70,18 @@ function withImage(player: PlayerWithoutImage): Player {
   return { ...player, imageUrl: image.url, imageSource: image.source, imageVerified: image.isVerified };
 }
 
+// Raw players' experience label follows their season count, so recompute it once the
+// Cricsheet record is in. Marquee players keep their hand-written taglines.
+function withRawStats(def: RawPlayerDef): PlayerWithoutImage {
+  const player = applyCareerStats(transformRawPlayer(def));
+  return { ...player, metadata: { ...player.metadata, iplExperience: experienceLabel(player.metadata.seasons) } };
+}
+
 const allTransformedPlayers: Player[] = [
-  ...marqueePlayers,
-  ...rawPlayersDataset.map(transformRawPlayer),
-  ...rawPlayersPart2.map(transformRawPlayer),
-  ...rawPlayersPart3.map(transformRawPlayer),
+  ...marqueePlayers.map(applyCareerStats),
+  ...rawPlayersDataset.map(withRawStats),
+  ...rawPlayersPart2.map(withRawStats),
+  ...rawPlayersPart3.map(withRawStats),
 ].map(withImage);
 
 export const ALL_PLAYERS: Player[] = allTransformedPlayers;

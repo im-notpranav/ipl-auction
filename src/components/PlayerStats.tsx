@@ -22,7 +22,8 @@ function careerStats(p: Player): Stat[] {
   const bowlSr = w.wickets > 0 ? (6 * w.average) / w.economy : 0;
   const bat: Stat[] = [
     { label: 'Runs', value: b.runs.toLocaleString('en-IN') },
-    { label: 'Average', value: b.runs > 0 ? b.average.toFixed(1) : '-' },
+    // Never dismissed means no average (runs / 0), so show a dash rather than 0.0.
+    { label: 'Average', value: b.average > 0 ? b.average.toFixed(1) : '-' },
     { label: 'Strike rate', value: b.runs > 0 ? b.strikeRate.toFixed(1) : '-' },
     { label: '50s / 100s', value: `${b.fifties} / ${b.hundreds}` },
   ];

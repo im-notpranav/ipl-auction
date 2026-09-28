@@ -1,5 +1,7 @@
 import { Player, PlayerCategory, PlayerRole } from '../types';
 import { ALL_PLAYERS, PLAYERS_BY_ID, PLAYERS_BY_CATEGORY } from '../data/players';
+import { STATS_SOURCE } from '../data/playerStats';
+import { STATS_DATA_THROUGH } from '../data/playerStats.generated';
 
 export interface CricketDataProvider {
   getPlayer(playerId: string): Promise<Player | null>;
@@ -90,7 +92,8 @@ export class HybridCricketDataProvider implements CricketDataProvider {
 
   async getHealthReport() {
     const total = ALL_PLAYERS.length;
-    const statsVerified = ALL_PLAYERS.filter(p => p.batting.matches > 0 || p.bowling.matches > 0).length;
+    // Verified = computed from Cricsheet (including confirmed "no IPL appearances").
+    const statsVerified = ALL_PLAYERS.filter(p => p.statsSource === STATS_SOURCE).length;
     const imagesVerified = ALL_PLAYERS.filter(p => p.imageVerified).length;
 
     return {
@@ -99,10 +102,8 @@ export class HybridCricketDataProvider implements CricketDataProvider {
       statsVerifiedCount: statsVerified,
       imagesVerifiedCount: imagesVerified,
       apiConfigured: Boolean(this.apiKey),
-      providerName: this.apiKey
-        ? 'CricketData Live API (Active)'
-        : 'Verified Local Cricket Database Provider (Zero-Latency Cached)',
-      lastSync: new Date().toISOString(),
+      providerName: STATS_SOURCE,
+      lastSync: STATS_DATA_THROUGH,
     };
   }
 }

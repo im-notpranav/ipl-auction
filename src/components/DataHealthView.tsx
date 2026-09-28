@@ -3,12 +3,16 @@ import { Search, Globe, ImageOff, ChevronRight, X, Info } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Player } from '../types';
 import { ALL_PLAYERS } from '../data/players';
+import { STATS_DATA_THROUGH } from '../data/playerStats.generated';
 import { formatCategory, formatRole } from '../utils/format';
 import { getPlayerRating } from '../services/playerRatings';
 import { Button, Drawer, EmptyState, Panel, PlayerPhoto, Price, SectionTitle, Select, ratingColor } from './ui';
 import { PlayerStats } from './PlayerStats';
 
 const PAGE_SIZE = 60;
+
+const formatDataDate = (iso: string) =>
+  iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : 'the last sync';
 
 type SortKey = 'rating' | 'name' | 'price' | 'matches';
 const SORTERS: Record<SortKey, (a: Player, b: Player) => number> = {
@@ -120,6 +124,9 @@ export const DataHealthView: React.FC = () => {
         <p>
           <span className="font-semibold text-ink">How ratings work:</span> 40 to 99, ranked against the pool. Batting uses Batting Index (average × strike rate), bowling uses
           Combined Bowling Rate (average, economy and strike rate together). Short IPL records are pulled towards a typical squad player, so a few good games can't outrank a long career.
+          <br />
+          <span className="font-semibold text-ink">Where the stats come from:</span> counted from the ball-by-ball record of every IPL match up to {formatDataDate(STATS_DATA_THROUGH)}, published by{' '}
+          <a href="https://cricsheet.org" target="_blank" rel="noreferrer" className="text-ipl-blue-bright underline underline-offset-2">Cricsheet</a> under the Open Data Commons Attribution License.
         </p>
       </div>
 
