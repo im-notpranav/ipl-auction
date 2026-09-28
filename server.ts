@@ -846,3 +846,17 @@ server.listen(PORT, '0.0.0.0', () => {
   }
   console.log('');
 });
+
+// Render's free tier sleeps after 15 min without inbound traffic. Hitting our own
+// public URL goes back in through Render's proxy, so it counts as traffic.
+// RENDER_EXTERNAL_URL is set by Render automatically; set KEEP_ALIVE=off to disable.
+const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL;
+if (KEEP_ALIVE_URL && process.env.KEEP_ALIVE !== 'off') {
+  const target = `${KEEP_ALIVE_URL.replace(/\/$/, '')}/healthz`;
+  setInterval(() => {
+    fetch(target, { signal: AbortSignal.timeout(10_000) }).catch(err =>
+      console.warn(`[keep-alive] ping failed: ${err?.message ?? err}`),
+    );
+  }, 10 * 60 * 1000).unref();
+  console.log(`[keep-alive] pinging ${target} every 10 min`);
+}
