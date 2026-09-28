@@ -5,6 +5,7 @@ import { rawPlayersPart2 } from './rawPlayersPart2';
 import { rawPlayersPart3 } from './rawPlayersPart3';
 import { resolvePlayerImage } from './playerImages';
 import { applyCareerStats, experienceLabel } from './playerStats';
+import { newSquadPlayers, squadBasePrice, withSquadTeam } from './squads';
 
 // The raw lists hold hand-entered figures that are only a fallback: applyCareerStats
 // replaces them with the record computed from Cricsheet whenever the player is matched.
@@ -70,11 +71,18 @@ function withImage(player: PlayerWithoutImage): Player {
   return { ...player, imageUrl: image.url, imageSource: image.source, imageVerified: image.isVerified };
 }
 
-// Raw players' experience label follows their season count, so recompute it once the
-// Cricsheet record is in. Marquee players keep their hand-written taglines.
-function withRawStats(def: RawPlayerDef): PlayerWithoutImage {
-  const player = applyCareerStats(transformRawPlayer(def));
+// Experience labels follow the season count, so recompute them once the Cricsheet
+// record is in. Marquee players keep their hand-written taglines.
+function withExperienceLabel(player: PlayerWithoutImage): PlayerWithoutImage {
   return { ...player, metadata: { ...player.metadata, iplExperience: experienceLabel(player.metadata.seasons) } };
+}
+
+const withRawStats = (def: RawPlayerDef) => withExperienceLabel(applyCareerStats(transformRawPlayer(def)));
+
+// Players added from the current official squads (see src/data/squads.ts).
+function withSquadStats(player: PlayerWithoutImage): PlayerWithoutImage {
+  const p = withExperienceLabel(applyCareerStats(player));
+  return { ...p, basePrice: squadBasePrice(p.isOverseas, p.metadata.iplMatches) };
 }
 
 const allTransformedPlayers: Player[] = [
@@ -82,7 +90,10 @@ const allTransformedPlayers: Player[] = [
   ...rawPlayersDataset.map(withRawStats),
   ...rawPlayersPart2.map(withRawStats),
   ...rawPlayersPart3.map(withRawStats),
-].map(withImage);
+  ...newSquadPlayers().map(withSquadStats),
+]
+  .map(withSquadTeam)
+  .map(withImage);
 
 export const ALL_PLAYERS: Player[] = allTransformedPlayers;
 
