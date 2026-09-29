@@ -5,6 +5,7 @@ import { generateTeamAnalysis } from '../src/services/bestXIEngine';
 import { getPlayerRating } from '../src/services/playerRatings';
 import * as engine from '../src/services/auctionEngine';
 import { playingXIErrors } from '../src/services/playingXIRules';
+import { CLASSIC_FRANCHISES, FRANCHISES, findFranchise, franchisesFor, teamLogoUrl } from '../src/data/franchises';
 import { generateAuctionPDFReport } from '../src/services/pdfReportGenerator';
 import { cricketDataProvider } from '../src/services/cricketDataProvider';
 import { PlayerImageProvider } from '../src/services/imageProvider';
@@ -171,6 +172,7 @@ async function runAsyncTests() {
       startingPurse: 120,
       maxSquadSize: 25,
       maxOverseas: 8,
+      maxTeams: 10,
       incrementTiers: [],
       categoriesOrder: [...engine.DEFAULT_CATEGORIES],
       isPublic: true,
@@ -407,6 +409,26 @@ function runEngineAndXITests(template: AuctionRoomState) {
     assert.deepStrictEqual(room.lotLoadedBy, [], 'They drop off the loaded list.');
     assert(!engine.removeParticipant(room, 'owner-a', t0 + 12_000), 'Removing twice changes nothing.');
     console.log('✓ 15a. Remove Team: buys return to the pool, the live bid falls back to the next team, the owner is barred.');
+  }
+
+  // 15c. Room size: 10 or 15 teams; 15-team rooms add the five classic franchises.
+  {
+    assert.strictEqual(engine.clampTeams(15), 15);
+    assert.strictEqual(engine.clampTeams('15'), 15);
+    assert.strictEqual(engine.clampTeams(12), 10, 'Only 10 or 15 teams are allowed.');
+    assert.strictEqual(engine.clampTeams(undefined), 10, 'Rooms saved before the option take 10 teams.');
+    const legacy = freshRoom();
+    delete (legacy.settings as Partial<AuctionRoomState['settings']>).maxTeams;
+    assert.strictEqual(engine.normalizeRoom(legacy).settings.maxTeams, 10);
+
+    assert.strictEqual(franchisesFor(10).length, 10);
+    assert.strictEqual(franchisesFor(15).length, 15);
+    assert.deepStrictEqual(CLASSIC_FRANCHISES.map((f) => f.short), ['DCH', 'KTK', 'PWI', 'RPS', 'GL']);
+    assert.strictEqual(new Set(FRANCHISES.map((f) => f.short)).size, 15, 'Franchise codes must be unique.');
+    assert.strictEqual(findFranchise('Rising Pune Supergiants')?.short, 'RPS', 'Old spellings resolve.');
+    assert.strictEqual(findFranchise('DC')?.name, 'Delhi Capitals', 'DC stays Delhi; Deccan is DCH.');
+    assert.strictEqual(teamLogoUrl({ name: 'Gujarat Lions', shortName: 'GL' }), '/teams/GL.webp');
+    console.log('✓ 15c. Room Size: 10 or 15 teams; 15-team rooms add Deccan, Kochi, Pune Warriors, Rising Pune and Gujarat Lions.');
   }
 
   // 15b. Running order: marquee set, then Batters / WK / All-rounders / Bowlers sets in rotation.

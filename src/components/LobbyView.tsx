@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Users, Copy, Check, Share2, Play, UserPlus, Tv, Lock, Wallet, Globe, ShieldCheck, Pencil } from 'lucide-react';
 import { AuctionRoomState } from '../types';
-import { FRANCHISES } from '../data/franchises';
+import { CLASSIC_FRANCHISES, CURRENT_FRANCHISES, Franchise, franchisesFor } from '../data/franchises';
 import { Button, EmptyState, Notice, Panel, PanelHeader, TeamLogo, TeamTag, TextField } from './ui';
 
 interface JoinTeamData {
@@ -20,7 +20,6 @@ interface LobbyViewProps {
   onKickParticipant: (id: string) => void;
 }
 
-const MAX_TEAMS = 10;
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 function RuleChip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
@@ -38,7 +37,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
   const myTeamId = participantId ? participants[participantId]?.teamId : null;
   const myTeam = myTeamId ? teams[myTeamId] : null;
   const teamList = Object.values(teams);
-  const roomFull = teamList.length >= MAX_TEAMS;
+  const maxTeams = settings.maxTeams;
+  const roomFull = teamList.length >= maxTeams;
+  // 15-team rooms list the classic franchises in their own group under the current ten.
+  const franchiseGroups: { label: string; franchises: Franchise[] }[] =
+    franchisesFor(maxTeams).length > CURRENT_FRANCHISES.length
+      ? [
+          { label: 'Current franchises', franchises: CURRENT_FRANCHISES },
+          { label: 'Classic franchises', franchises: CLASSIC_FRANCHISES },
+        ]
+      : [{ label: 'Franchises', franchises: CURRENT_FRANCHISES }];
   const takenShortNames = new Set(teamList.map((t) => t.shortName.toUpperCase()));
 
   const shareCode = roomState.roomCode || roomState.id;
@@ -47,7 +55,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
   const [copied, setCopied] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [teamShortName, setTeamShortName] = useState('');
-  const [teamColor, setTeamColor] = useState(FRANCHISES[1].color);
+  const [teamColor, setTeamColor] = useState(CURRENT_FRANCHISES[1].color);
   const [customTeam, setCustomTeam] = useState(false);
   const [errors, setErrors] = useState<{ teamName?: string; teamShortName?: string; submit?: string }>({});
   const [submitting, setSubmitting] = useState(false);
@@ -65,7 +73,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
     else window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(`${text}: ${shareUrl}`)}`, '_blank', 'noopener');
   };
 
-  const pickFranchise = (f: (typeof FRANCHISES)[number]) => {
+  const pickFranchise = (f: Franchise) => {
     setTeamName(f.name);
     setTeamShortName(f.short);
     setTeamColor(f.color);
@@ -150,7 +158,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
       <PanelHeader icon={<UserPlus className="h-5 w-5" />} title="Register your team" description="Pick a franchise and you're in. You bid from this phone." />
       {roomFull ? (
         <div className="p-5">
-          <Notice tone="error">This room already has {MAX_TEAMS} teams. Ask the auctioneer to make space.</Notice>
+          <Notice tone="error">This room already has {maxTeams} teams. Ask the auctioneer to make space.</Notice>
         </div>
       ) : (
         <form onSubmit={handleRegister} noValidate className="flex flex-col gap-6 p-5">
@@ -158,8 +166,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
 
           <div className="flex flex-col gap-3">
             <span className="text-sm font-semibold text-ink">Pick a franchise</span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3" role="group" aria-label="Franchises">
-              {FRANCHISES.map((f) => {
+            {franchiseGroups.map((group) => (
+            <div key={group.label} className="flex flex-col gap-2">
+            {franchiseGroups.length > 1 && (
+              <span className="font-display text-xs font-bold uppercase tracking-[0.2em] text-ink-3">{group.label}</span>
+            )}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3" role="group" aria-label={group.label}>
+              {group.franchises.map((f) => {
                 const takenBy = teamList.find((t) => t.shortName.toUpperCase() === f.short);
                 const selected = !customTeam && teamShortName.toUpperCase() === f.short;
                 return (
@@ -184,6 +197,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
                 );
               })}
             </div>
+            </div>
+            ))}
             <button
               type="button"
               onClick={() => {
@@ -221,7 +236,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
                     <div className="flex flex-col gap-2">
                       <span className="text-sm font-semibold text-ink">Team colour</span>
                       <div className="flex flex-wrap gap-2">
-                        {FRANCHISES.map((f) => (
+                        {franchisesFor(maxTeams).map((f) => (
                           <button
                             key={f.color}
                             type="button"
@@ -308,7 +323,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
             title="Teams in the room"
             action={
               <span className="font-display text-lg font-bold tabular text-ink-2">
-                {teamList.length}/{MAX_TEAMS}
+                {teamList.length}/{maxTeams}
               </span>
             }
           />
@@ -317,7 +332,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
               <motion.div
                 className="h-full rounded-full stripe-ipl"
                 initial={false}
-                animate={{ width: `${(teamList.length / MAX_TEAMS) * 100}%` }}
+                animate={{ width: `${(teamList.length / maxTeams) * 100}%` }}
                 transition={{ duration: 0.5, ease: EASE }}
               />
             </div>

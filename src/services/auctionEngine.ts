@@ -46,6 +46,11 @@ export function clampDelay(seconds: unknown): number {
   return Math.min(30, Math.max(2, n));
 }
 
+// Room size: 15 when asked for, otherwise the classic 10 (rooms saved before the option).
+export function clampTeams(value: unknown): number {
+  return Number(value) === 15 ? 15 : 10;
+}
+
 // Fills fields added after a room was saved, and drops the retired lot clock.
 export function normalizeRoom(room: AuctionRoomState): AuctionRoomState {
   const s = room.settings as AuctionSettings & { bidTimerSeconds?: number };
@@ -53,6 +58,7 @@ export function normalizeRoom(room: AuctionRoomState): AuctionRoomState {
   if (typeof s.autoAdvance !== 'boolean') s.autoAdvance = false;
   if (typeof s.autoAdvanceDelaySeconds !== 'number') s.autoAdvanceDelaySeconds = DEFAULT_SETTINGS.autoAdvanceDelaySeconds;
   if (typeof s.reauctionUnsold !== 'boolean') s.reauctionUnsold = false;
+  s.maxTeams = clampTeams(s.maxTeams);
   delete (room as AuctionRoomState & { bidEndsAt?: unknown }).bidEndsAt;
   if (room.status === 'PAUSED') room.pausedRemainingMs = null;
   if (room.pausedRemainingMs === undefined) room.pausedRemainingMs = null;

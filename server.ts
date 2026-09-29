@@ -33,6 +33,7 @@ import {
   advance,
   bidLockRemaining,
   clampDelay,
+  clampTeams,
   endAuction,
   lockBidding,
   markLotLoaded,
@@ -312,6 +313,7 @@ app.get('/api/rooms', (_req, res) => {
         status: r.status,
         auctioneerName: r.auctioneerName,
         teamsCount: teamsArr.length,
+        maxTeams: r.settings.maxTeams,
         soldCount: Object.keys(r.soldPlayers || {}).length,
         totalSpent: Math.round(totalSpent * 100) / 100,
         createdAt: r.createdAt,
@@ -335,6 +337,7 @@ app.post('/api/rooms', async (req, res) => {
     startingPurse: settings?.startingPurse || 120,
     maxSquadSize: settings?.maxSquadSize || 18,
     maxOverseas: 8,
+    maxTeams: clampTeams(settings?.maxTeams),
     incrementTiers: [
       { minPrice: 0, maxPrice: 5, increment: 0.2 },
       { minPrice: 5, maxPrice: 10, increment: 0.25 },
@@ -435,8 +438,8 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
   }
 
   const existingTeams = Object.values(room.teams);
-  if (existingTeams.length >= 10) {
-    return res.status(400).json({ error: 'Maximum participant limit (10 teams) reached for this auction room' });
+  if (existingTeams.length >= room.settings.maxTeams) {
+    return res.status(400).json({ error: `This auction is full: it takes ${room.settings.maxTeams} teams.` });
   }
 
   const normalizedTeam = teamName?.trim().toLowerCase();

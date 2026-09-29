@@ -1,6 +1,13 @@
+export interface Franchise {
+  name: string;
+  short: string;
+  color: string;
+  logo: string;
+}
+
 // The ten IPL franchises in their kit colours (tuned to read on the navy background).
 // Crests are the official team icons from iplt20.com, stored as 256px WebP in public/teams.
-export const FRANCHISES = [
+export const CURRENT_FRANCHISES: Franchise[] = [
   { name: 'Chennai Super Kings', short: 'CSK', color: '#f9cd05', logo: '/teams/CSK.webp' },
   { name: 'Mumbai Indians', short: 'MI', color: '#1e6fd9', logo: '/teams/MI.webp' },
   { name: 'Royal Challengers Bengaluru', short: 'RCB', color: '#d4202b', logo: '/teams/RCB.webp' },
@@ -13,7 +20,26 @@ export const FRANCHISES = [
   { name: 'Punjab Kings', short: 'PBKS', color: '#ed4050', logo: '/teams/PBKS.webp' },
 ];
 
-export type Franchise = (typeof FRANCHISES)[number];
+// Former IPL franchises, offered in 15-team auctions. Crests are the club logos from
+// their Wikipedia articles, trimmed and stored the same way.
+export const CLASSIC_FRANCHISES: Franchise[] = [
+  { name: 'Deccan Chargers', short: 'DCH', color: '#b9c4d6', logo: '/teams/DCH.webp' },
+  { name: 'Kochi Tuskers Kerala', short: 'KTK', color: '#9c5bd6', logo: '/teams/KTK.webp' },
+  { name: 'Pune Warriors India', short: 'PWI', color: '#3cc4d4', logo: '/teams/PWI.webp' },
+  { name: 'Rising Pune Supergiant', short: 'RPS', color: '#d23a9e', logo: '/teams/RPS.webp' },
+  { name: 'Gujarat Lions', short: 'GL', color: '#f0a020', logo: '/teams/GL.webp' },
+];
+
+export const FRANCHISES: Franchise[] = [...CURRENT_FRANCHISES, ...CLASSIC_FRANCHISES];
+
+// Auction sizes a room can be created with.
+export const TEAM_COUNT_OPTIONS = [10, 15] as const;
+export const DEFAULT_MAX_TEAMS = 10;
+
+// The franchises a room offers: the current ten, plus the classics in 15-team rooms.
+export function franchisesFor(maxTeams: number | undefined): Franchise[] {
+  return (maxTeams ?? DEFAULT_MAX_TEAMS) > CURRENT_FRANCHISES.length ? FRANCHISES : CURRENT_FRANCHISES;
+}
 
 // Older names that still turn up in career data.
 const ALIASES: Record<string, string> = {
@@ -22,6 +48,9 @@ const ALIASES: Record<string, string> = {
   'KINGS XI PUNJAB': 'PBKS',
   'DELHI DAREDEVILS': 'DC',
   'ROYAL CHALLENGERS BANGALORE': 'RCB',
+  'RISING PUNE SUPERGIANTS': 'RPS',
+  'PUNE WARRIORS': 'PWI',
+  'KOCHI TUSKERS': 'KTK',
 };
 
 const BY_KEY = new Map<string, Franchise>();

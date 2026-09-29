@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, Gavel, Timer, Wallet, Eye } from 'lucide-react';
+import { ChevronDown, Gavel, Timer, Wallet, Eye, Users } from 'lucide-react';
 import { AuctionSettings } from '../types';
+import { CLASSIC_FRANCHISES, DEFAULT_MAX_TEAMS, TEAM_COUNT_OPTIONS, franchisesFor } from '../data/franchises';
 import { Button, ChoiceGroup, Modal, Notice, Switch, TextField } from './ui';
 
 interface CreateAuctionModalProps {
@@ -11,6 +12,7 @@ interface CreateAuctionModalProps {
   onCreateRoom: (data: { name: string; auctioneerName: string; settings: Partial<AuctionSettings> }) => Promise<void>;
 }
 
+const TEAM_OPTIONS = TEAM_COUNT_OPTIONS.map((value) => ({ value: value as number, label: `${value} teams` }));
 const PURSE_OPTIONS = [100, 120, 150].map((value) => ({ value, label: `₹${value} Cr` }));
 const SQUAD_OPTIONS = [15, 18, 25].map((value) => ({ value, label: `${value}` }));
 const DELAY_OPTIONS = [3, 5, 8].map((value) => ({ value, label: `${value}s` }));
@@ -32,6 +34,7 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
   // which made React throw the moment the dialog opened and blanked the whole app.
   const [name, setName] = useState('IPL Mega Auction 2026');
   const [auctioneerName, setAuctioneerName] = useState('');
+  const [maxTeams, setMaxTeams] = useState<number>(DEFAULT_MAX_TEAMS);
   const [startingPurse, setStartingPurse] = useState(120);
   const [maxSquadSize, setMaxSquadSize] = useState(18);
   const [autoAdvance, setAutoAdvance] = useState(true);
@@ -68,6 +71,7 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
           startingPurse,
           maxSquadSize,
           maxOverseas: 8,
+          maxTeams,
           isPublic,
           autoAdvance,
           autoAdvanceDelaySeconds,
@@ -125,6 +129,27 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
             hint="You run the big screen and call the hammer. The auctioneer doesn't own a team."
           />
         </div>
+
+        <Section icon={<Users className="h-4 w-4" />} title="Teams">
+          <ChoiceGroup
+            label="How many teams"
+            value={maxTeams}
+            options={TEAM_OPTIONS}
+            onChange={setMaxTeams}
+            hint={
+              maxTeams > DEFAULT_MAX_TEAMS
+                ? `The ten current franchises plus ${CLASSIC_FRANCHISES.map((f) => f.name).join(', ')}.`
+                : 'The ten current IPL franchises. Owners can also create their own team.'
+            }
+          />
+          <ul className="flex flex-wrap gap-1.5" aria-label="Franchises in this auction">
+            {franchisesFor(maxTeams).map((f) => (
+              <li key={f.short} title={f.name}>
+                <img src={f.logo} alt={f.name} width={32} height={32} className="h-8 w-8 object-contain" />
+              </li>
+            ))}
+          </ul>
+        </Section>
 
         <Section icon={<Wallet className="h-4 w-4" />} title="Purse & squad">
           <ChoiceGroup label="Starting purse per team" value={startingPurse} options={PURSE_OPTIONS} onChange={setStartingPurse} />
@@ -197,7 +222,7 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
         </div>
 
         <p className="rounded-xl bg-pitch-2/70 px-4 py-3 text-sm text-ink-2">
-          <span className="font-semibold text-ink">Summary:</span> ₹{startingPurse} Cr purses, {maxSquadSize}-player squads,{' '}
+          <span className="font-semibold text-ink">Summary:</span> {maxTeams} teams, ₹{startingPurse} Cr purses, {maxSquadSize}-player squads,{' '}
           {autoAdvance ? 'automatic' : 'manual'} next player
           {reauctionUnsold ? ', unsold players re-auctioned' : ''}, {isPublic ? 'public' : 'private'} room.
         </p>

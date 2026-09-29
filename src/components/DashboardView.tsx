@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Gavel, HelpCircle, ArrowRight, RefreshCw, Play, FileText, Database, Radio, Trophy, Tv, Smartphone, BarChart3, QrCode } from 'lucide-react';
 import { LandingIntro, introHold, shouldPlayIntro } from './LandingIntro';
 import { ALL_PLAYERS } from '../data/players';
-import { FRANCHISES, Franchise, findFranchise } from '../data/franchises';
+import { CLASSIC_FRANCHISES, CURRENT_FRANCHISES, FRANCHISES, Franchise, findFranchise } from '../data/franchises';
 import { getPlayerRating } from '../services/playerRatings';
 import { formatPrice, formatRole } from '../utils/format';
 import { Player } from '../types';
@@ -16,6 +16,7 @@ export interface PublicRoomItem {
   status: string;
   auctioneerName: string;
   teamsCount: number;
+  maxTeams?: number;
   soldCount?: number;
   totalSpent?: number;
   createdAt: string;
@@ -269,8 +270,20 @@ function CrestWall() {
         <h2 id="franchises-title" className="text-center font-display text-lg font-bold uppercase tracking-[0.25em] text-ink-2">
           Bid as any of the ten franchises
         </h2>
-        <ul className="mt-6 grid grid-cols-5 gap-3 sm:gap-4 lg:grid-cols-10">
-          {FRANCHISES.map((f, i) => (
+        <CrestRow franchises={CURRENT_FRANCHISES} className="mt-6 lg:grid-cols-10" />
+        <p className="mt-8 text-center font-display text-sm font-bold uppercase tracking-[0.25em] text-ink-3">
+          Plus five classics in 15-team auctions
+        </p>
+        <CrestRow franchises={CLASSIC_FRANCHISES} className="mx-auto mt-4 max-w-3xl" />
+      </div>
+    </section>
+  );
+}
+
+function CrestRow({ franchises, className = '' }: { franchises: Franchise[]; className?: string }) {
+  return (
+        <ul className={`grid grid-cols-5 gap-3 sm:gap-4 ${className}`}>
+          {franchises.map((f, i) => (
             <motion.li
               key={f.short}
               initial={{ opacity: 0, y: 16, scale: 0.9 }}
@@ -296,8 +309,6 @@ function CrestWall() {
             </motion.li>
           ))}
         </ul>
-      </div>
-    </section>
   );
 }
 
@@ -666,7 +677,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenCreate, onOp
                           <p className="mt-0.5 text-sm text-ink-3">
                             <span className="font-display font-bold tracking-widest text-ink-2">{room.roomCode || room.id}</span>
                             {', '}
-                            {room.auctioneerName}, {room.teamsCount} {room.teamsCount === 1 ? 'team' : 'teams'}
+                            {room.auctioneerName}, {room.teamsCount}/{room.maxTeams ?? 10} teams
                             {tab === 'finished' && room.totalSpent !== undefined && <>, {formatPrice(room.totalSpent)} spent</>}
                           </p>
                         </div>

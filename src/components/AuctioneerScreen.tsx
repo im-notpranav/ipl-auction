@@ -32,7 +32,6 @@ interface AuctioneerScreenProps {
   onUndoLastSale: () => void;
 }
 
-const MAX_TEAMS = 10;
 const SPLASH_MS = 3200;
 
 const SHORTCUTS: [string, string][] = [
@@ -479,9 +478,10 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
                     Share
                   </Button>
                 </div>
-                <dl className="mt-6 grid max-w-xl grid-cols-2 gap-x-6 gap-y-3 border-t border-line pt-5 sm:grid-cols-4">
+                <dl className="mt-6 grid max-w-3xl grid-cols-2 gap-x-6 gap-y-3 border-t border-line pt-5 sm:grid-cols-3 xl:grid-cols-5">
                   {[
                     ['Purse', `₹${settings.startingPurse} Cr`],
+                    ['Teams', `Up to ${settings.maxTeams}`],
                     ['Squad', `${settings.maxSquadSize} max`],
                     ['Bid lock', `${BID_LOCK_MS / 1000}s per bid`],
                     ['Next player', autoAdvance ? `Auto, ${advanceDelay}s` : 'Manual'],
@@ -506,7 +506,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
             <Panel className="p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="font-display text-xl font-bold uppercase tracking-wide text-ink">
-                  Teams in the room <span className="tabular text-ink-3">({teamList.length}/{MAX_TEAMS})</span>
+                  Teams in the room <span className="tabular text-ink-3">({teamList.length}/{settings.maxTeams})</span>
                 </h2>
               </div>
               {teamList.length === 0 ? (
@@ -708,7 +708,7 @@ export const AuctioneerScreen: React.FC<AuctioneerScreenProps> = ({
         )}
       </AnimatePresence>
 
-      <Drawer open={showTeams} onClose={() => setShowTeams(false)} title={`Teams (${teamList.length}/${MAX_TEAMS})`}>
+      <Drawer open={showTeams} onClose={() => setShowTeams(false)} title={`Teams (${teamList.length}/${settings.maxTeams})`}>
         {teamList.length === 0 ? (
           <EmptyState icon={<Users className="h-8 w-8" />} title="No teams yet">
             Owners join with code {displayCode}.

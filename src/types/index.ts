@@ -91,6 +91,8 @@ export interface AuctionSettings {
   startingPurse: number; // e.g. 100, 120, 150 Cr
   maxSquadSize: number; // 15, 18, 25
   maxOverseas: number; // Fixed at 8
+  // Teams the room takes: 10 (current franchises) or 15 (adds the five classic franchises).
+  maxTeams: number;
   incrementTiers: BidIncrementTier[];
   categoriesOrder: PlayerCategory[];
   isPublic: boolean;
