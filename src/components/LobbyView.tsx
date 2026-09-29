@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Users, Copy, Check, Share2, Play, UserPlus, Tv, Lock, Wallet, Globe, ShieldCheck, Pencil } from 'lucide-react';
+import { Users, Copy, Check, Share2, Play, UserPlus, Tv, Lock, Wallet, Globe, ShieldCheck } from 'lucide-react';
 import { AuctionRoomState } from '../types';
 import { CLASSIC_FRANCHISES, CURRENT_FRANCHISES, Franchise, franchisesFor } from '../data/franchises';
-import { Button, EmptyState, Notice, Panel, PanelHeader, TeamLogo, TeamTag, TextField } from './ui';
+import { Button, EmptyState, Notice, Panel, PanelHeader, TeamLogo, TeamTag } from './ui';
 
 interface JoinTeamData {
   teamName: string;
@@ -53,12 +53,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/join/${shareCode}` : '';
 
   const [copied, setCopied] = useState(false);
-  const [teamName, setTeamName] = useState('');
-  const [teamShortName, setTeamShortName] = useState('');
-  const [teamColor, setTeamColor] = useState(CURRENT_FRANCHISES[1].color);
-  const [customTeam, setCustomTeam] = useState(false);
-  const [errors, setErrors] = useState<{ teamName?: string; teamShortName?: string; submit?: string }>({});
+  // Owners can only play as one of the room's franchises; there is no custom team.
+  const [pickedShort, setPickedShort] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Someone else may register the picked franchise first; then the pick lapses.
+  const picked = franchisesFor(maxTeams).find((f) => f.short === pickedShort && !takenShortNames.has(f.short)) ?? null;
 
   const copyLink = () => {
     navigator.clipboard?.writeText(shareUrl).then(() => {
@@ -74,37 +74,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
   };
 
   const pickFranchise = (f: Franchise) => {
-    setTeamName(f.name);
-    setTeamShortName(f.short);
-    setTeamColor(f.color);
-    setCustomTeam(false);
-    setErrors((e) => ({ ...e, teamName: undefined, teamShortName: undefined, submit: undefined }));
+    setPickedShort(f.short);
+    setError(null);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    const short = teamShortName.trim().toUpperCase();
-    const found: typeof errors = {};
-    if (!teamName.trim()) found.teamName = 'Pick a franchise above, or create your own team.';
-    if (short.length < 2 || short.length > 4) found.teamShortName = 'Use 2 to 4 letters, like CSK or MI.';
-    else if (takenShortNames.has(short)) found.teamShortName = `${short} is already taken in this room.`;
-    setErrors(found);
-    if (Object.keys(found).length) {
-      if (found.teamName || found.teamShortName) setCustomTeam((c) => c || !!teamName);
+    if (!picked) {
+      setError('Pick a franchise first.');
       return;
     }
-
     setSubmitting(true);
     try {
-      await onJoinAsTeam({ teamName: teamName.trim(), teamShortName: short, color: teamColor });
+      await onJoinAsTeam({ teamName: picked.name, teamShortName: picked.short, color: picked.color });
     } catch (err) {
-      setErrors({ submit: err instanceof Error ? err.message : 'Could not register your team. Try again.' });
+      setError(err instanceof Error ? err.message : 'Could not register your team. Try again.');
     } finally {
       setSubmitting(false);
     }
   };
-
-  const previewShort = teamShortName.trim().toUpperCase() || '???';
 
   // ── Right-hand (or top, on phones) panel depends on who is looking ──────
   const actionPanel = isAuctioneer ? (
@@ -162,7 +150,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
         </div>
       ) : (
         <form onSubmit={handleRegister} noValidate className="flex flex-col gap-6 p-5">
-          {errors.submit && <Notice tone="error">{errors.submit}</Notice>}
+          {error && <Notice tone="error">{error}</Notice>}
 
           <div className="flex flex-col gap-3">
             <span className="text-sm font-semibold text-ink">Pick a franchise</span>
@@ -174,7 +162,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3" role="group" aria-label={group.label}>
               {group.franchises.map((f) => {
                 const takenBy = teamList.find((t) => t.shortName.toUpperCase() === f.short);
-                const selected = !customTeam && teamShortName.toUpperCase() === f.short;
+                const selected = picked?.short === f.short;
                 return (
                   <button
                     key={f.short}
@@ -199,77 +187,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ roomState, participantId, 
             </div>
             </div>
             ))}
-            <button
-              type="button"
-              onClick={() => {
-                setCustomTeam(true);
-                setTeamName('');
-                setTeamShortName('');
-              }}
-              className="inline-flex min-h-11 items-center gap-2 self-start rounded-lg text-sm font-semibold text-ipl-orange hover:underline"
-            >
-              <Pencil className="h-4 w-4" aria-hidden /> Or create your own team
-            </button>
-
-            <AnimatePresence initial={false}>
-              {(customTeam || errors.teamName || errors.teamShortName) && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.22, ease: EASE }}
-                  className="overflow-hidden"
-                >
-                  <div className="flex flex-col gap-4 rounded-xl border border-line bg-night/40 p-4">
-                    <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-3">
-                      <TextField label="Team name" maxLength={40} value={teamName} onChange={(e) => setTeamName(e.target.value)} error={errors.teamName} />
-                      <TextField
-                        label="Short"
-                        maxLength={4}
-                        autoCapitalize="characters"
-                        value={teamShortName}
-                        onChange={(e) => setTeamShortName(e.target.value.toUpperCase())}
-                        error={errors.teamShortName}
-                        className="font-display font-bold tracking-widest"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <span className="text-sm font-semibold text-ink">Team colour</span>
-                      <div className="flex flex-wrap gap-2">
-                        {franchisesFor(maxTeams).map((f) => (
-                          <button
-                            key={f.color}
-                            type="button"
-                            aria-label={`Use the ${f.name} colour`}
-                            aria-pressed={teamColor === f.color}
-                            onClick={() => setTeamColor(f.color)}
-                            className={`h-11 w-11 rounded-full border-2 transition-transform duration-150 sm:h-9 sm:w-9 ${teamColor === f.color ? 'scale-110 border-ink' : 'border-transparent hover:scale-105'}`}
-                            style={{ backgroundColor: f.color }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
           <div className="flex items-center gap-3 rounded-xl border border-line bg-night/50 p-3" aria-live="polite">
-            <span
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-display text-lg font-extrabold text-night"
-              style={{ backgroundColor: teamColor }}
-              aria-hidden
-            >
-              {previewShort.slice(0, 3)}
-            </span>
+            {picked ? (
+              <TeamLogo team={{ name: picked.name, shortName: picked.short, color: picked.color }} size={48} />
+            ) : (
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-dashed border-line-strong font-display text-lg font-extrabold text-ink-3" aria-hidden>
+                ?
+              </span>
+            )}
             <span className="min-w-0 text-sm">
-              <span className="block truncate font-semibold text-ink">{teamName.trim() || 'Your team'}</span>
+              <span className="block truncate font-semibold text-ink">{picked ? picked.name : 'Pick a franchise above'}</span>
               <span className="block truncate text-ink-3">₹{settings.startingPurse} Cr purse</span>
             </span>
           </div>
 
-          <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting} icon={<UserPlus className="h-5 w-5" />}>
+          <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting} disabled={!picked} icon={<UserPlus className="h-5 w-5" />}>
             Register team
           </Button>
         </form>

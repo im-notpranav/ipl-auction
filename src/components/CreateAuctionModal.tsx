@@ -139,7 +139,7 @@ export const CreateAuctionModal: React.FC<CreateAuctionModalProps> = ({ isOpen, 
             hint={
               maxTeams > DEFAULT_MAX_TEAMS
                 ? `The ten current franchises plus ${CLASSIC_FRANCHISES.map((f) => f.name).join(', ')}.`
-                : 'The ten current IPL franchises. Owners can also create their own team.'
+                : 'The ten current IPL franchises. Owners pick one of these when they join.'
             }
           />
           <ul className="flex flex-wrap gap-1.5" aria-label="Franchises in this auction">

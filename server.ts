@@ -51,6 +51,7 @@ import {
   updateClockSettings,
 } from './src/services/auctionEngine';
 import { playingXIErrors } from './src/services/playingXIRules';
+import { findFranchise, franchisesFor } from './src/data/franchises';
 import { cricketDataProvider } from './src/services/cricketDataProvider';
 import { PlayerImageProvider } from './src/services/imageProvider';
 
@@ -431,7 +432,7 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
   }
 
   const roomId = room.id;
-  const { displayName, teamName, teamShortName, logoUrl, color } = req.body;
+  const { displayName, teamName, teamShortName } = req.body;
 
   if (room.status !== 'LOBBY' && room.status !== 'READY') {
     return res.status(400).json({ error: 'Auction has already commenced. Registration closed.' });
@@ -442,15 +443,20 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
     return res.status(400).json({ error: `This auction is full: it takes ${room.settings.maxTeams} teams.` });
   }
 
-  const normalizedTeam = teamName?.trim().toLowerCase();
-  const normalizedShort = teamShortName?.trim().toLowerCase();
+  // Teams are the room's franchises only (the current ten, plus the classics in 15-team rooms).
+  const franchise = findFranchise(teamShortName, teamName);
+  if (!franchise || !franchisesFor(room.settings.maxTeams).includes(franchise)) {
+    return res.status(400).json({ error: 'Pick one of the franchises listed for this auction.' });
+  }
+  const normalizedTeam = franchise.name.toLowerCase();
+  const normalizedShort = franchise.short.toLowerCase();
 
   if (existingTeams.some(t => t.name.toLowerCase() === normalizedTeam)) {
-    return res.status(400).json({ error: 'Team name already registered in this room. Please choose a unique team name.' });
+    return res.status(400).json({ error: `${franchise.name} is already taken in this room. Pick another franchise.` });
   }
 
   if (existingTeams.some(t => t.shortName.toLowerCase() === normalizedShort)) {
-    return res.status(400).json({ error: 'Team abbreviation already in use in this room.' });
+    return res.status(400).json({ error: `${franchise.short} is already taken in this room. Pick another franchise.` });
   }
 
   const participantId = 'user-' + Math.random().toString(36).substring(2, 9);
@@ -458,10 +464,10 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
 
   const newTeam: Team = {
     id: teamId,
-    name: teamName.trim(),
-    shortName: teamShortName.trim().toUpperCase(),
-    logoUrl,
-    color: color || '#3b82f6',
+    name: franchise.name,
+    shortName: franchise.short,
+    logoUrl: franchise.logo,
+    color: franchise.color,
     ownerParticipantId: participantId,
     startingPurse: room.settings.startingPurse,
     remainingPurse: room.settings.startingPurse,
@@ -472,7 +478,7 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
 
   const newParticipant: RoomParticipant = {
     id: participantId,
-    displayName: (displayName || teamName).trim(),
+    displayName: String(displayName || franchise.name).trim().slice(0, 40),
     role: 'PARTICIPANT',
     teamId,
     connected: true,
